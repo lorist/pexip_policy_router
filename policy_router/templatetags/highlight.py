@@ -14,6 +14,6 @@ def highlight(text, search):
             lambda m: f'<mark style="background-color: yellow;">{m.group(0)}</mark>',
             str(text)
         )
-        return mark_safe(highlighted)  # ✅ prevent auto-escaping
+        return mark_safe(highlighted)  # prevent auto-escaping
     except Exception:
         return text
