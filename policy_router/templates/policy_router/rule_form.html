@@ -1,0 +1,61 @@
+{% extends "policy_router/base.html" %}
+{% load widget_tweaks %}
+{% block title %}Rule{% endblock %}
+{% block content %}
+
+<h2 class="mb-4">
+  {% if form.instance.pk %}Edit Rule{% else %}Create Rule{% endif %}
+</h2>
+
+<form method="post" class="needs-validation" novalidate>
+  {% csrf_token %}
+  <div class="row g-3">
+    <div class="mb-3">
+      {{ form.priority.label_tag }}
+      {{ form.priority }}
+      <small class="form-text text-muted">Lower numbers are matched first.</small>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Name</label>
+      {{ form.name|add_class:"form-control" }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Local Alias Regex</label>
+      {{ form.regex|add_class:"form-control" }}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Service Policy URL</label>
+      {{ form.service_target_url|add_class:"form-control" }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Participant Policy URL</label>
+      {{ form.participant_target_url|add_class:"form-control" }}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Basic Auth Username</label>
+      {{ form.basic_auth_username|add_class:"form-control" }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Basic Auth Password</label>
+      {{ form.basic_auth_password|add_class:"form-control" }}
+    </div>
+
+    <div class="col-12">
+      <div class="form-check">
+        {{ form.is_active|add_class:"form-check-input" }}
+        <label class="form-check-label">Active</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <button type="submit" class="btn btn-primary">
+      {% if form.instance.pk %}Update{% else %}Create{% endif %}
+    </button>
+    <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+
+{% endblock %}

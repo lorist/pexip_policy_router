@@ -1,0 +1,86 @@
+{% extends "policy_router/base.html" %}
+{% load highlight %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+
+<h2>Policy Request Logs</h2>
+
+<form method="get" class="row g-3 mb-4">
+  <div class="col-md-3">
+    <label class="form-label">Filter by Local Alias</label>
+    <input type="text" class="form-control" name="local_alias" value="{{ filters.local_alias }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Rule</label>
+    <select name="rule" class="form-select">
+      <option value="">-- All --</option>
+      {% for rule in rules %}
+        <option value="{{ rule.id }}" {% if filters.rule == rule.id|stringformat:"s" %}selected{% endif %}>
+          {{ rule.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Start (UTC)</label>
+    <input type="datetime-local" class="form-control" name="start_datetime" value="{{ filters.start_datetime }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">End (UTC)</label>
+    <input type="datetime-local" class="form-control" name="end_datetime" value="{{ filters.end_datetime }}">
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Filter</button>
+    <a href="{% url 'policy_router:log_list' %}" class="btn btn-secondary">Clear</a>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-striped table-hover table-bordered">
+    <thead class="table-dark">
+      <tr>
+        <th>Timestamp (UTC)</th>
+        <th>Rule</th>
+        <th>Request Path</th>
+        <th>Method</th>
+        <th>Status</th>
+        <th>Request Body</th>
+        <th>Response Body</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in page_obj %}
+      <tr>
+        <td>{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</td>
+        <td>{% if log.rule %}{{ log.rule.name|highlight:filters.local_alias }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
+        <td><pre>{{ log.request_path|highlight:filters.local_alias }}</pre></td>
+        <td><span class="badge bg-info">{{ log.request_method }}</span></td>
+        <td>
+          {% if log.response_status|default:0 >= 400 %}
+            <span class="badge bg-danger">{{ log.response_status }}</span>
+          {% else %}
+            <span class="badge bg-success">{{ log.response_status }}</span>
+          {% endif %}
+        </td>
+        <td><pre>{{ log.request_body|highlight:filters.local_alias }}</pre></td>
+        <td><pre>{{ log.response_body|highlight:filters.local_alias }}</pre></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+<nav>
+  <ul class="pagination">
+    {% if page_obj.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+    {% endif %}
+    <li class="page-item active"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    {% if page_obj.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+    {% endif %}
+  </ul>
+</nav>
+
+{% endblock %}
