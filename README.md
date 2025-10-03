@@ -129,5 +129,3 @@ As this is a POC, you can add log rotation to a crod job or run manually. Proper
 
     ```bash
     python manage.py rotate_logs --days=30
-
-
