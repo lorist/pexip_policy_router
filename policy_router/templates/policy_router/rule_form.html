@@ -2,63 +2,78 @@
 {% block title %}Rule{% endblock %}
 {% block content %}
 
-<h2>{% if form.instance.pk %}Edit{% else %}Create{% endif %} Rule</h2>
+<h2 class="mb-4">{% if form.instance.pk %}Edit{% else %}Create{% endif %} Rule</h2>
 
 <form method="post" class="needs-validation">
   {% csrf_token %}
 
   <!-- Match Criteria -->
   <div class="card mb-4">
-    <div class="card-header">
+    <div class="card-header bg-light">
       <strong>Match Criteria</strong>
     </div>
-    <div class="card-body row g-3 align-items-end">
-      <div class="col-md-4">
-        {{ form.name.label_tag }} {{ form.name }}
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          {{ form.name.label_tag }} {{ form.name }}
+        </div>
+        <div class="col-md-8">
+          {{ form.regex.label_tag }} {{ form.regex }}
+          <div class="form-text">Regex to match the <code>local_alias</code> (e.g. <code>^room-\d+$</code>)</div>
+        </div>
       </div>
-      <div class="col-md-4">
-        {{ form.regex.label_tag }} {{ form.regex }}
-      </div>
-      <div class="col-md-2">
-        {{ form.protocols.label_tag }} {{ form.protocols }}
-      </div>
-      <div class="col-md-2">
-        {{ form.call_directions.label_tag }} {{ form.call_directions }}
-      </div>
-    </div>
-  </div>
-
-  <!-- Service policy -->
-  <div class="card mb-4">
-    <div class="card-header">
-      <strong>Service Policy</strong>
-    </div>
-    <div class="card-body row g-3">
-      <div class="col-md-6">
-        {{ form.service_target_url.label_tag }} {{ form.service_target_url }}
-      </div>
-      <div class="col-md-6">
-        {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
-        <div id="service-override-container" class="mt-2">
-          {{ form.override_service_response.label_tag }} {{ form.override_service_response }}
+      <div class="row g-3 mt-2">
+        <div class="col-md-6">
+          {{ form.protocols.label_tag }}
+          {{ form.protocols }}
+        </div>
+        <div class="col-md-6">
+          {{ form.call_directions.label_tag }}
+          {{ form.call_directions }}
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Participant policy -->
+  <!-- Service Policy -->
   <div class="card mb-4">
-    <div class="card-header">
+    <div class="card-header bg-light">
+      <strong>Service Policy</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.service_target_url.label_tag }} {{ form.service_target_url }}
+        <div class="form-text">Optional: Forward to upstream service</div>
+      </div>
+      <div class="col-md-6">
+        <div class="form-check mb-2">
+          {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
+        </div>
+        <div id="service-override-container" class="mt-2 p-2 border rounded bg-light">
+          {{ form.override_service_response.label_tag }}
+          {{ form.override_service_response }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Participant Policy -->
+  <div class="card mb-4">
+    <div class="card-header bg-light">
       <strong>Participant Policy</strong>
     </div>
     <div class="card-body row g-3">
       <div class="col-md-6">
         {{ form.participant_target_url.label_tag }} {{ form.participant_target_url }}
+        <div class="form-text">Optional: Forward to upstream participant handler</div>
       </div>
       <div class="col-md-6">
-        {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
-        <div id="participant-override-container" class="mt-2">
-          {{ form.override_participant_response.label_tag }} {{ form.override_participant_response }}
+        <div class="form-check mb-2">
+          {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
+        </div>
+        <div id="participant-override-container" class="mt-2 p-2 border rounded bg-light">
+          {{ form.override_participant_response.label_tag }}
+          {{ form.override_participant_response }}
         </div>
       </div>
     </div>
@@ -66,7 +81,7 @@
 
   <!-- Authentication -->
   <div class="card mb-4">
-    <div class="card-header">
+    <div class="card-header bg-light">
       <strong>Authentication</strong>
     </div>
     <div class="card-body row g-3">
@@ -81,7 +96,7 @@
 
   <!-- Management -->
   <div class="card mb-4">
-    <div class="card-header">
+    <div class="card-header bg-light">
       <strong>Management</strong>
     </div>
     <div class="card-body row g-3">
@@ -96,24 +111,32 @@
 
   <!-- Actions -->
   <div class="mt-3">
-    <button type="submit" class="btn btn-primary btn-sm">Save</button>
-    <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary btn-sm">Cancel</a>
+    <button type="submit" class="btn btn-primary">💾 Save</button>
+    <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
 
+<!-- Select2 + Toggle Scripts -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+  // Enhance multi-selects with Select2
+  $("#id_protocols, #id_call_directions").select2({
+    width: "100%",
+    placeholder: "Select options",
+    allowClear: true
+  });
+
+  // Override toggles
   const serviceToggle = document.querySelector("[name=always_continue_service]");
   const serviceOverride = document.getElementById("service-override-container");
   const participantToggle = document.querySelector("[name=always_continue_participant]");
   const participantOverride = document.getElementById("participant-override-container");
 
   function toggle(el, container) {
-    if (el.checked) {
-      container.style.display = "block";
-    } else {
-      container.style.display = "none";
-    }
+    container.style.display = el.checked ? "block" : "none";
   }
 
   serviceToggle.addEventListener("change", () => toggle(serviceToggle, serviceOverride));
