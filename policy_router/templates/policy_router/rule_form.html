@@ -1,61 +1,106 @@
 {% extends "policy_router/base.html" %}
-{% load widget_tweaks %}
-{% block title %}Rule{% endblock %}
 {% block content %}
 
-<h2 class="mb-4">
-  {% if form.instance.pk %}Edit Rule{% else %}Create Rule{% endif %}
-</h2>
+<h2>{% if form.instance.pk %}Edit{% else %}Create{% endif %} Rule</h2>
 
-<form method="post" class="needs-validation" novalidate>
+<form method="post" class="card p-4 shadow-sm">
   {% csrf_token %}
-  <div class="row g-3">
-    <div class="mb-3">
-      {{ form.priority.label_tag }}
-      {{ form.priority }}
-      <small class="form-text text-muted">Lower numbers are matched first.</small>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label">Name</label>
-      {{ form.name|add_class:"form-control" }}
-    </div>
-    <div class="col-md-6">
-      <label class="form-label">Local Alias Regex</label>
-      {{ form.regex|add_class:"form-control" }}
-    </div>
 
-    <div class="col-md-6">
-      <label class="form-label">Service Policy URL</label>
-      {{ form.service_target_url|add_class:"form-control" }}
-    </div>
-    <div class="col-md-6">
-      <label class="form-label">Participant Policy URL</label>
-      {{ form.participant_target_url|add_class:"form-control" }}
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label">Basic Auth Username</label>
-      {{ form.basic_auth_username|add_class:"form-control" }}
-    </div>
-    <div class="col-md-6">
-      <label class="form-label">Basic Auth Password</label>
-      {{ form.basic_auth_password|add_class:"form-control" }}
-    </div>
-
-    <div class="col-12">
-      <div class="form-check">
-        {{ form.is_active|add_class:"form-check-input" }}
-        <label class="form-check-label">Active</label>
-      </div>
-    </div>
+  <div class="mb-3">
+    {{ form.name.label_tag }} {{ form.name }}
+  </div>
+  <div class="mb-3">
+    {{ form.regex.label_tag }} {{ form.regex }}
+  </div>
+  <div class="mb-3">
+    {{ form.priority.label_tag }} {{ form.priority }}
+  </div>
+  <div class="form-check mb-3">
+    {{ form.is_active }} {{ form.is_active.label_tag }}
   </div>
 
-  <div class="mt-4">
-    <button type="submit" class="btn btn-primary">
-      {% if form.instance.pk %}Update{% else %}Create{% endif %}
-    </button>
-    <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">Cancel</a>
+  <hr>
+
+  <div class="mb-3">
+    {{ form.service_target_url.label_tag }} {{ form.service_target_url }}
   </div>
+  <div class="form-check mb-3">
+    {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
+  </div>
+  <div class="mb-3" id="service-response-block" style="display:none;">
+    {{ form.override_service_response.label_tag }} {{ form.override_service_response }}
+  </div>
+
+  <hr>
+
+  <div class="mb-3">
+    {{ form.participant_target_url.label_tag }} {{ form.participant_target_url }}
+  </div>
+  <div class="form-check mb-3">
+    {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
+  </div>
+  <div class="mb-3" id="participant-response-block" style="display:none;">
+    {{ form.override_participant_response.label_tag }} {{ form.override_participant_response }}
+  </div>
+
+  <hr>
+
+  <div class="mb-3">
+    {{ form.basic_auth_username.label_tag }} {{ form.basic_auth_username }}
+  </div>
+  <div class="mb-3">
+    {{ form.basic_auth_password.label_tag }} {{ form.basic_auth_password }}
+  </div>
+
+  <button type="submit" class="btn btn-primary">Save</button>
+  <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">Cancel</a>
 </form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const serviceCheckbox = document.querySelector("#id_always_continue_service");
+  const serviceBlock = document.querySelector("#service-response-block");
+  const serviceTextarea = document.querySelector("#id_override_service_response");
+
+  const participantCheckbox = document.querySelector("#id_always_continue_participant");
+  const participantBlock = document.querySelector("#participant-response-block");
+  const participantTextarea = document.querySelector("#id_override_participant_response");
+
+  function toggleService() {
+    if (serviceCheckbox && serviceCheckbox.checked) {
+      serviceBlock.style.display = "block";
+      if (!serviceTextarea.value || serviceTextarea.value.trim() === "") {
+        serviceTextarea.value = '{"status": "success", "action": "continue"}';
+      }
+    } else {
+      serviceBlock.style.display = "none";
+      serviceTextarea.value = ""; // clear when unchecked
+    }
+  }
+
+  function toggleParticipant() {
+    if (participantCheckbox && participantCheckbox.checked) {
+      participantBlock.style.display = "block";
+      if (!participantTextarea.value || participantTextarea.value.trim() === "") {
+        participantTextarea.value = '{"status": "success", "action": "continue"}';
+      }
+    } else {
+      participantBlock.style.display = "none";
+      participantTextarea.value = ""; // clear when unchecked
+    }
+  }
+
+  if (serviceCheckbox) {
+    serviceCheckbox.addEventListener("change", toggleService);
+    toggleService(); // run once on load
+  }
+  if (participantCheckbox) {
+    participantCheckbox.addEventListener("change", toggleParticipant);
+    toggleParticipant(); // run once on load
+  }
+});
+</script>
+
+
 
 {% endblock %}

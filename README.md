@@ -24,19 +24,49 @@ This project allows administrators to configure regex-based rules to forward pol
 ![Logs View](docs/screenshots/policy_router_logs.png)
 
 ---
-## 🚀 Features
+## ✨ Features
 
-- Configure rules from the Django web UI
-- Match requests by `local_alias` regex
-- Forward requests to multiple upstream policy servers
-- Basic Auth support per rule
-- Logs every request and response for auditing
-- Log viewer with filters by `local_alias`, rule, and date/time
-- Modern Bootstrap 5 UI for managing rules and viewing logs
+- **Rule-based routing**
+  - Match requests based on `local_alias` regex
+  - Rules are applied in **priority order** (lowest number first)
+  - Active/inactive toggle per rule
 
+- **Overrides**
+  - Rules can be configured to **always return a JSON response** instead of forwarding upstream
+  - Default override responses:
+    ```json
+    { "status": "success", "action": "continue" }
+    ```
+  - Custom JSON responses can be defined per rule for:
+    - Service policy (`/policy/v1/service/configuration`)
+    - Participant policy (`/policy/v1/participant/properties`)
+
+- **Authentication**
+  - Supports optional **Basic Auth** for upstream targets
+
+- **Logging**
+  - Every request and response is logged in the database
+  - Logs include:
+    - Rule matched
+    - Request path, method, body
+    - Response status and body
+    - Whether the rule was an **override**
+  - Logs UI:
+    - Filter by rule, alias, date/time
+    - Highlight search terms
+    - Pretty-printed JSON with syntax highlighting
+
+- **Admin & UI**
+  - Manage rules through Django Admin or custom HTML forms
+  - Add/edit/delete rules
+  - Override toggles with JSON editor fields
+  - Logs displayed with pagination, highlighting, and JSON pretty-printing
+
+- **Deployment Ready**
+  - Includes `.gitignore`, `requirements.txt`
 ---
 
-## 📦 Requirements
+##  Requirements
 
 - Python **3.11+**
 - Django **5.0+**
@@ -46,7 +76,7 @@ Dependencies are listed in `requirements.txt`.
 
 ---
 
-## ⚙️ Installation
+##  Installation
 
 1. Clone the repository:
 
@@ -79,7 +109,7 @@ Dependencies are listed in `requirements.txt`.
     ```bash
     python manage.py runserver 10.0.0.10:8000
 
-## 🛠️ Usage
+##  Usage
 
 - Rules UI: Visit http://10.0.0.10:8000/rules/ to create, edit, and delete rules.
 - Logs UI: Visit http://10.0.0.10:8000/logs/ to search and view request logs.

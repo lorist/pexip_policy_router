@@ -1,5 +1,6 @@
 import re
 import httpx
+import json
 from datetime import datetime
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
@@ -24,15 +25,20 @@ def _build_safe_headers(request):
     }
 
 
-def _log_request(rule, request, response):
+def _log_request(rule, request, response=None, is_override=False, override_response=None):
     """Save request/response info to DB."""
     PolicyRequestLog.objects.create(
         rule=rule,
         request_method=request.method,
         request_path=request.get_full_path(),
         request_body=(request.body.decode("utf-8", errors="ignore") if request.body else None),
-        response_status=response.status_code,
-        response_body=(response.text if hasattr(response, "text") else None),
+        response_status=(response.status_code if response else 200),
+        response_body=(
+            response.text
+            if response
+            else json.dumps(override_response or {"status": "success", "action": "continue"})
+        ),
+        is_override=is_override,
     )
 
 
@@ -49,35 +55,39 @@ def proxy_service_policy(request):
 
     for rule in rules:
         try:
-            if re.search(rule.regex, local_alias or "") and rule.service_target_url:
-                upstream = rule.service_target_url.rstrip("/")
-                try:
-                    resp = httpx.get(
-                        upstream + request.path,
-                        params=request.GET,
-                        headers=_build_safe_headers(request),
-                        auth=(
-                            (rule.basic_auth_username, rule.basic_auth_password)
-                            if rule.basic_auth_username and rule.basic_auth_password
-                            else None
-                        ),
-                        timeout=10.0,
-                    )
+            if re.search(rule.regex, local_alias or ""):
+                # --- Override check ---
+                if rule.always_continue_service:
+                    response_json = rule.override_service_response or {"status": "success", "action": "continue"}
+                    _log_request(rule, request, None, is_override=True, override_response=response_json)
+                    return JsonResponse(response_json)
 
-                    _log_request(rule, request, resp)
-
+                if rule.service_target_url:
+                    upstream = rule.service_target_url.rstrip("/")
                     try:
-                        return JsonResponse(resp.json(), status=resp.status_code)
-                    except ValueError:
-                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
-
-                except httpx.RequestError as e:
-                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
-
+                        resp = httpx.get(
+                            upstream + request.path,
+                            params=request.GET,
+                            headers=_build_safe_headers(request),
+                            auth=(
+                                (rule.basic_auth_username, rule.basic_auth_password)
+                                if rule.basic_auth_username and rule.basic_auth_password
+                                else None
+                            ),
+                            timeout=10.0,
+                        )
+                        _log_request(rule, request, resp)
+                        try:
+                            return JsonResponse(resp.json(), status=resp.status_code)
+                        except ValueError:
+                            return JsonResponse({"raw": resp.text}, status=resp.status_code)
+                    except httpx.RequestError as e:
+                        return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
         except re.error:
             continue
 
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 
 def proxy_participant_policy(request):
@@ -88,45 +98,49 @@ def proxy_participant_policy(request):
     local_alias = request.GET.get("local_alias")
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
-
     for rule in rules:
         try:
-            if re.search(rule.regex, local_alias or "") and rule.participant_target_url:
-                upstream = rule.participant_target_url.rstrip("/")
-                try:
-                    resp = httpx.get(
-                        upstream + request.path,
-                        params=request.GET,
-                        headers=_build_safe_headers(request),
-                        auth=(
-                            (rule.basic_auth_username, rule.basic_auth_password)
-                            if rule.basic_auth_username and rule.basic_auth_password
-                            else None
-                        ),
-                        timeout=10.0,
-                    )
+            if re.search(rule.regex, local_alias or ""):
+                # --- Override check ---
+                if rule.always_continue_participant:
+                    response_json = rule.override_participant_response or {"status": "success", "action": "continue"}
+                    _log_request(rule, request, None, is_override=True, override_response=response_json)
+                    return JsonResponse(response_json)
 
-                    _log_request(rule, request, resp)
-
+                if rule.participant_target_url:
+                    upstream = rule.participant_target_url.rstrip("/")
                     try:
-                        return JsonResponse(resp.json(), status=resp.status_code)
-                    except ValueError:
-                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
+                        resp = httpx.get(
+                            upstream + request.path,
+                            params=request.GET,
+                            headers=_build_safe_headers(request),
+                            auth=(
+                                (rule.basic_auth_username, rule.basic_auth_password)
+                                if rule.basic_auth_username and rule.basic_auth_password
+                                else None
+                            ),
+                            timeout=10.0,
+                        )
+                        _log_request(rule, request, resp)
 
-                except httpx.RequestError as e:
-                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
-
+                        try:
+                            return JsonResponse(resp.json(), status=resp.status_code)
+                        except ValueError:
+                            return JsonResponse({"raw": resp.text}, status=resp.status_code)
+                    except httpx.RequestError as e:
+                        return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
         except re.error:
             continue
 
     return JsonResponse({"error": "No matching rule"}, status=404)
 
 
+
 # -----------------------------
 # Rules Management
 # -----------------------------
 def rule_list(request):
-    rules = PolicyProxyRule.objects.all()
+    rules = PolicyProxyRule.objects.all().order_by("priority", "-updated_at")
     return render(request, "policy_router/rule_list.html", {"rules": rules})
 
 
