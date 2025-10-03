@@ -1,60 +1,140 @@
 {% extends "policy_router/base.html" %}
-
+{% block title %}Rules{% endblock %}
 {% block content %}
-<div class="container mt-4">
-  <h2>Policy Proxy Rules</h2>
 
-  <div class="mb-3">
-    <a href="{% url 'policy_router:rule_create' %}" class="btn btn-success">Create New Rule</a>
+<h2 class="mb-4">Policy Proxy Rules</h2>
+
+<!-- Filter Card -->
+<div class="card mb-4">
+  <div class="card-header">
+    <strong>Filter Rules</strong>
   </div>
-
-  <table class="table table-striped table-hover">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Local Alias Regex</th>
-        <th>Service Target</th>
-        <th>Participant Target</th>
-        <th>Priority</th>
-        <th>Status</th>
-        <th>Overrides</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for rule in rules %}
-      <tr>
-        <td>{{ rule.name }}</td>
-        <td><code>{{ rule.regex }}</code></td>
-        <td>{{ rule.service_target_url }}</td>
-        <td>{{ rule.participant_target_url }}</td>
-        <td>{{ rule.priority }}</td>
-        <td>
-          {% if rule.is_active %}
-            <span class="badge bg-success">Active</span>
-          {% else %}
-            <span class="badge bg-secondary">Inactive</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if rule.always_continue_service %}
-            <span class="badge bg-primary">Service Override</span>
-          {% endif %}
-          {% if rule.always_continue_participant %}
-            <span class="badge bg-info">Participant Override</span>
-          {% endif %}
-        </td>
-        <td>
-          <a href="{% url 'policy_router:rule_edit' rule.pk %}" class="btn btn-sm btn-warning">Edit</a>
-          <a href="{% url 'policy_router:rule_delete' rule.pk %}" class="btn btn-sm btn-danger">Delete</a>
-        </td>
-      </tr>
-      {% empty %}
-      <tr>
-        <td colspan="8" class="text-center text-muted">No rules defined.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Protocols</label>
+        <select name="protocols" class="form-select" multiple>
+          {% for key, label in protocol_choices %}
+            <option value="{{ key }}" {% if key in filters.protocols %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+        <small class="text-muted">Hold Ctrl (Windows) / Cmd (Mac) to select multiple</small>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Call Directions</label>
+        <select name="call_directions" class="form-select" multiple>
+          {% for key, label in call_direction_choices %}
+            <option value="{{ key }}" {% if key in filters.call_directions %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+        <small class="text-muted">Hold Ctrl (Windows) / Cmd (Mac) to select multiple</small>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary me-2">
+          <i class="bi bi-funnel"></i> Filter
+        </button>
+        <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">
+          <i class="bi bi-x-circle"></i> Clear
+        </a>
+      </div>
+    </form>
+  </div>
 </div>
+
+<!-- Add Rule -->
+<div class="mb-3">
+  <a href="{% url 'policy_router:rule_create' %}" class="btn btn-success">
+    <i class="bi bi-plus-circle"></i> Add Rule
+  </a>
+</div>
+
+<!-- Rules Table -->
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-bordered table-striped align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Name</th>
+            <th>Regex</th>
+            <th>Priority</th>
+            <th>Active</th>
+            <th>Protocols</th>
+            <th>Call Directions</th>
+            <th>Service Target</th>
+            <th>Participant Target</th>
+            <th>Updated</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in rules %}
+          <tr>
+            <td><strong>{{ rule.name }}</strong></td>
+            <td><code>{{ rule.regex }}</code></td>
+            <td>{{ rule.priority }}</td>
+            <td>
+              {% if rule.is_active %}
+                <span class="badge bg-success">Active</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.protocols %}
+                {% for proto in rule.protocols %}
+                  <span class="badge bg-info text-dark">{{ proto }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">Any</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.call_directions %}
+                {% for cd in rule.call_directions %}
+                  <span class="badge bg-warning text-dark">{{ cd }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">Any</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.service_target_url %}
+                <a href="{{ rule.service_target_url }}" target="_blank">{{ rule.service_target_url }}</a>
+              {% else %}
+                <span class="text-muted">N/A</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.participant_target_url %}
+                <a href="{{ rule.participant_target_url }}" target="_blank">{{ rule.participant_target_url }}</a>
+              {% else %}
+                <span class="text-muted">N/A</span>
+              {% endif %}
+            </td>
+            <td>{{ rule.updated_at|date:"Y-m-d H:i" }}</td>
+            <td class="text-center">
+              <a href="{% url 'policy_router:rule_edit' rule.id %}" class="btn btn-sm btn-outline-primary me-1">
+                <i class="bi bi-pencil-square"></i> Edit
+              </a>
+              <a href="{% url 'policy_router:rule_delete' rule.id %}" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-trash"></i> Delete
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="10" class="text-center text-muted py-3">No rules found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

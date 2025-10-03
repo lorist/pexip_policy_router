@@ -1,106 +1,171 @@
 {% extends "policy_router/base.html" %}
+{% block title %}Rule{% endblock %}
 {% block content %}
 
 <h2>{% if form.instance.pk %}Edit{% else %}Create{% endif %} Rule</h2>
 
-<form method="post" class="card p-4 shadow-sm">
+<form method="post" class="needs-validation">
   {% csrf_token %}
 
-  <div class="mb-3">
-    {{ form.name.label_tag }} {{ form.name }}
-  </div>
-  <div class="mb-3">
-    {{ form.regex.label_tag }} {{ form.regex }}
-  </div>
-  <div class="mb-3">
-    {{ form.priority.label_tag }} {{ form.priority }}
-  </div>
-  <div class="form-check mb-3">
-    {{ form.is_active }} {{ form.is_active.label_tag }}
-  </div>
-
-  <hr>
-
-  <div class="mb-3">
-    {{ form.service_target_url.label_tag }} {{ form.service_target_url }}
-  </div>
-  <div class="form-check mb-3">
-    {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
-  </div>
-  <div class="mb-3" id="service-response-block" style="display:none;">
-    {{ form.override_service_response.label_tag }} {{ form.override_service_response }}
-  </div>
-
-  <hr>
-
-  <div class="mb-3">
-    {{ form.participant_target_url.label_tag }} {{ form.participant_target_url }}
-  </div>
-  <div class="form-check mb-3">
-    {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
-  </div>
-  <div class="mb-3" id="participant-response-block" style="display:none;">
-    {{ form.override_participant_response.label_tag }} {{ form.override_participant_response }}
-  </div>
-
-  <hr>
-
-  <div class="mb-3">
-    {{ form.basic_auth_username.label_tag }} {{ form.basic_auth_username }}
-  </div>
-  <div class="mb-3">
-    {{ form.basic_auth_password.label_tag }} {{ form.basic_auth_password }}
+  <!-- Match Criteria -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Match Criteria</strong>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          {{ form.name.label_tag }}
+          {{ form.name }}
+          {% if form.name.help_text %}
+            <div class="form-text">{{ form.name.help_text }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6">
+          {{ form.regex.label_tag }}
+          {{ form.regex }}
+          {% if form.regex.help_text %}
+            <div class="form-text">{{ form.regex.help_text }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          {{ form.protocols.label_tag }}
+          {{ form.protocols }}
+          <div class="form-text">Select one or more supported protocols (e.g., SIP, WebRTC).</div>
+        </div>
+        <div class="col-md-6">
+          {{ form.call_directions.label_tag }}
+          {{ form.call_directions }}
+          <div class="form-text">Select one or more call directions (Dial In, Dial Out, Non Dial).</div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <button type="submit" class="btn btn-primary">Save</button>
-  <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">Cancel</a>
+  <!-- Service policy -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Service Policy</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.service_target_url.label_tag }}
+        {{ form.service_target_url }}
+        <div class="form-text">Target URL for forwarding service policy requests.</div>
+      </div>
+      <div class="col-md-6">
+        {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
+        <div class="form-text">Always return a static "continue" response instead of proxying.</div>
+        <div class="mt-2" id="service-override-container">
+          {{ form.override_service_response.label_tag }}
+          {{ form.override_service_response }}
+          <div class="form-text">Custom JSON response if "Always continue" is enabled.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Participant policy -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Participant Policy</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.participant_target_url.label_tag }}
+        {{ form.participant_target_url }}
+        <div class="form-text">Target URL for forwarding participant policy requests.</div>
+      </div>
+      <div class="col-md-6">
+        {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
+        <div class="form-text">Always return a static "continue" response instead of proxying.</div>
+        <div class="mt-2" id="participant-override-container">
+          {{ form.override_participant_response.label_tag }}
+          {{ form.override_participant_response }}
+          <div class="form-text">Custom JSON response if "Always continue" is enabled.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authentication -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Authentication</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.basic_auth_username.label_tag }}
+        {{ form.basic_auth_username }}
+        <div class="form-text">Optional basic auth username for upstream target requests.</div>
+      </div>
+      <div class="col-md-6">
+        {{ form.basic_auth_password.label_tag }}
+        {{ form.basic_auth_password }}
+        <div class="form-text">Optional basic auth password for upstream target requests.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Management -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Management</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        {{ form.priority.label_tag }}
+        {{ form.priority }}
+        <div class="form-text">Lower numbers are matched first. Default is 100.</div>
+      </div>
+      <div class="col-md-3">
+        {{ form.is_active.label_tag }}
+        {{ form.is_active }}
+        <div class="form-text">Only active rules are evaluated.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary btn-sm">Cancel</a>
+  </div>
 </form>
+
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  const serviceCheckbox = document.querySelector("#id_always_continue_service");
-  const serviceBlock = document.querySelector("#service-response-block");
-  const serviceTextarea = document.querySelector("#id_override_service_response");
+  const serviceToggle = document.querySelector("[name=always_continue_service]");
+  const serviceOverrideContainer = document.getElementById("service-override-container");
+  const serviceOverrideInput = document.getElementById("id_override_service_response");
 
-  const participantCheckbox = document.querySelector("#id_always_continue_participant");
-  const participantBlock = document.querySelector("#participant-response-block");
-  const participantTextarea = document.querySelector("#id_override_participant_response");
+  const participantToggle = document.querySelector("[name=always_continue_participant]");
+  const participantOverrideContainer = document.getElementById("participant-override-container");
+  const participantOverrideInput = document.getElementById("id_override_participant_response");
 
-  function toggleService() {
-    if (serviceCheckbox && serviceCheckbox.checked) {
-      serviceBlock.style.display = "block";
-      if (!serviceTextarea.value || serviceTextarea.value.trim() === "") {
-        serviceTextarea.value = '{"status": "success", "action": "continue"}';
+  function toggleOverride(toggle, container, input) {
+    if (toggle.checked) {
+      container.style.display = "block";
+      if (!input.value.trim()) {
+        input.value = JSON.stringify({status: "success", action: "continue"}, null, 2);
       }
     } else {
-      serviceBlock.style.display = "none";
-      serviceTextarea.value = ""; // clear when unchecked
+      container.style.display = "none";
+      input.value = "";
     }
   }
 
-  function toggleParticipant() {
-    if (participantCheckbox && participantCheckbox.checked) {
-      participantBlock.style.display = "block";
-      if (!participantTextarea.value || participantTextarea.value.trim() === "") {
-        participantTextarea.value = '{"status": "success", "action": "continue"}';
-      }
-    } else {
-      participantBlock.style.display = "none";
-      participantTextarea.value = ""; // clear when unchecked
-    }
-  }
+  // Initial load
+  toggleOverride(serviceToggle, serviceOverrideContainer, serviceOverrideInput);
+  toggleOverride(participantToggle, participantOverrideContainer, participantOverrideInput);
 
-  if (serviceCheckbox) {
-    serviceCheckbox.addEventListener("change", toggleService);
-    toggleService(); // run once on load
-  }
-  if (participantCheckbox) {
-    participantCheckbox.addEventListener("change", toggleParticipant);
-    toggleParticipant(); // run once on load
-  }
+  // Add event listeners
+  serviceToggle.addEventListener("change", () => toggleOverride(serviceToggle, serviceOverrideContainer, serviceOverrideInput));
+  participantToggle.addEventListener("change", () => toggleOverride(participantToggle, participantOverrideContainer, participantOverrideInput));
 });
 </script>
-
-
 
 {% endblock %}

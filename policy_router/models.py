@@ -3,9 +3,30 @@ from django.core.exceptions import ValidationError
 import json
 
 class PolicyProxyRule(models.Model):
+    PROTOCOL_CHOICES = [
+    ("api", "API"),
+    ("webrtc", "WebRTC"),
+    ("sip", "SIP"),
+    ("rtmp", "RTMP"),
+    ("h323", "H.323"),
+    ("teams", "Microsoft Teams"),
+    ("mssip", "Microsoft SIP"),
+    ]
+
+    CALL_DIRECTION_CHOICES = [
+        ("dial_in", "Dial In"),
+        ("dial_out", "Dial Out"),
+        ("non_dial", "Non Dial"),
+    ]
+
     name = models.CharField(max_length=100, help_text="Friendly name for this routing rule")
+
+    # Filters
     regex = models.CharField(max_length=255, help_text="Local alias regex to match incoming requests")
 
+    protocols = models.JSONField(default=list, blank=True, null=False)
+    call_directions = models.JSONField(default=list, blank=True, null=False)
+    
     # Upstream targets
     service_target_url = models.URLField(blank=True, null=True)
     participant_target_url = models.URLField(blank=True, null=True)
@@ -52,8 +73,32 @@ class PolicyRequestLog(models.Model):
     request_body = models.TextField(null=True, blank=True)
     response_status = models.IntegerField()
     response_body = models.TextField(null=True, blank=True)
-    is_override = models.BooleanField(default=False) 
+    is_override = models.BooleanField(default=False)
+
+    # New fields for better filtering
+    call_direction = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[("dial_in", "Dial In"), ("dial_out", "Dial Out"), ("non_dial", "Non Dial")],
+    )
+    protocol = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[
+            ("api", "API"),
+            ("webrtc", "WebRTC"),
+            ("sip", "SIP"),
+            ("rtmp", "RTMP"),
+            ("h323", "H.323"),
+            ("teams", "Teams"),
+            ("mssip", "MS-SIP"),
+        ],
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"[{self.created_at}] {self.request_method} {self.request_path}"
+
