@@ -44,13 +44,14 @@
         <th>Request Path</th>
         <th>Method</th>
         <th>Status</th>
+        <th>Override</th>
         <th>Request Body</th>
         <th>Response Body</th>
       </tr>
     </thead>
     <tbody>
       {% for log in page_obj %}
-      <tr>
+      <tr {% if log.is_override %}class="table-warning"{% endif %}>
         <td>{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</td>
         <td>{% if log.rule %}{{ log.rule.name|highlight:filters.local_alias }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
         <td><pre>{{ log.request_path|highlight:filters.local_alias }}</pre></td>
@@ -60,6 +61,13 @@
             <span class="badge bg-danger">{{ log.response_status }}</span>
           {% else %}
             <span class="badge bg-success">{{ log.response_status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if log.is_override %}
+            <span class="badge bg-warning text-dark">Override</span>
+          {% else %}
+            <span class="text-muted">No</span>
           {% endif %}
         </td>
         <td><pre>{{ log.request_body|highlight:filters.local_alias }}</pre></td>
