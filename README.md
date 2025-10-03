@@ -18,7 +18,7 @@ This project allows administrators to configure regex-based rules to forward pol
 ### Rule Management
 ![Rules List](docs/screenshots/policy_router_list.png)
 
-### Logs Viewer
+### Rule Form
 ![Rules Form](docs/screenshots/policy_router_form.png)
 
 ### Logs Viewer
