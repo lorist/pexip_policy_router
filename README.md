@@ -6,6 +6,7 @@ This project allows administrators to configure regex-based rules to forward pol
 - **Service policy proxying** (`/policy/v1/service/configuration`)
 - **Participant policy proxying** (`/policy/v1/participant/properties`)
 - **Regex-based rule matching** on `local_alias`
+- **Rule matching** on `call_direction` and/or `protocol`
 - **Rule priorities** (lower numbers evaluated first)
 - **Optional Basic Authentication** per upstream
 - **Request/response logging** with a searchable log viewer
