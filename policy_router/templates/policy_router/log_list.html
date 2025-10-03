@@ -53,7 +53,13 @@
       {% for log in page_obj %}
       <tr {% if log.is_override %}class="table-warning"{% endif %}>
         <td>{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</td>
-        <td>{% if log.rule %}{{ log.rule.name|highlight:filters.local_alias }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
+        <td>
+          {% if log.rule %}
+            {{ log.rule.name|highlight:filters.local_alias }}
+          {% else %}
+            <span class="text-muted">N/A</span>
+          {% endif %}
+        </td>
         <td><pre>{{ log.request_path|highlight:filters.local_alias }}</pre></td>
         <td><span class="badge bg-info">{{ log.request_method }}</span></td>
         <td>
@@ -70,21 +76,93 @@
             <span class="text-muted">No</span>
           {% endif %}
         </td>
-        <td><pre>{{ log.request_body|highlight:filters.local_alias }}</pre></td>
-        <td><pre>{{ log.response_body|highlight:filters.local_alias }}</pre></td>
+
+        <td>
+          {% if log.request_body %}
+            {% with rid="request_json_"|add:log.id|stringformat:"s" %}
+              {{ log.request_body|json_script:rid }}
+              <pre class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;">
+                <code id="pretty_request_{{ log.id }}">{{ log.request_body|highlight:filters.local_alias|escape }}</code>
+              </pre>
+              <script>
+                (function(){
+                  try {
+                    const raw = JSON.parse(
+                      document.getElementById("{{ rid }}").textContent
+                    );
+                    document.getElementById("pretty_request_{{ log.id }}").textContent =
+                      JSON.stringify(raw, null, 2);  // pretty print
+                  } catch (e) {
+                    // Fallback (original content with highlighting) is already displayed
+                  }
+                })();
+              </script>
+            {% endwith %}
+          {% else %}
+            <span class="text-muted">N/A</span>
+          {% endif %}
+        </td>
+
+        <td>
+          {% if log.response_body %}
+            {% with rid="response_json_"|add:log.id|stringformat:"s" %}
+              {{ log.response_body|json_script:rid }}
+              <pre class="mb-0 json-viewer" id="pretty_{{ log.id }}"></pre>
+              <script>
+                (function(){
+                  try {
+                    const raw = JSON.parse(
+                      document.getElementById("{{ rid }}").textContent
+                    );
+
+                    function syntaxHighlight(json) {
+                      if (typeof json != 'string') {
+                        json = JSON.stringify(json, null, 2);
+                      }
+                      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                        let cls = 'number';
+                        if (/^"/.test(match)) {
+                          if (/:$/.test(match)) {
+                            cls = 'key';
+                          } else {
+                            cls = 'string';
+                          }
+                        } else if (/true|false/.test(match)) {
+                          cls = 'boolean';
+                        } else if (/null/.test(match)) {
+                          cls = 'null';
+                        }
+                        return '<span class="' + cls + '">' + match + '</span>';
+                      });
+                    }
+
+                    document.getElementById("pretty_{{ log.id }}").innerHTML = syntaxHighlight(raw);
+
+                  } catch (e) {
+                    document.getElementById("pretty_{{ log.id }}").textContent = "{{ log.response_body|escapejs }}";
+                  }
+                })();
+              </script>
+            {% endwith %}
+          {% else %}
+            <span class="text-muted">N/A</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-<!-- Pagination -->
 <nav>
   <ul class="pagination">
     {% if page_obj.has_previous %}
       <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
     {% endif %}
-    <li class="page-item active"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    <li class="page-item active">
+      <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    </li>
     {% if page_obj.has_next %}
       <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
     {% endif %}
