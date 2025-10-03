@@ -39,6 +39,8 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
             else json.dumps(override_response or {"status": "success", "action": "continue"})
         ),
         is_override=is_override,
+        call_direction=request.GET.get("call_direction"),
+        protocol=request.GET.get("protocol"),
     )
 
 
@@ -51,11 +53,20 @@ def proxy_service_policy(request):
         return HttpResponseNotAllowed(["GET"])
 
     local_alias = request.GET.get("local_alias")
+    req_protocol = request.GET.get("protocol")
+    req_call_direction = request.GET.get("call_direction")
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
             if re.search(rule.regex, local_alias or ""):
+                # Check protocol/call_direction match if specified
+                if rule.protocols and req_protocol not in rule.protocols:
+                    continue
+                if rule.call_directions and req_call_direction not in rule.call_directions:
+                    continue
+
                 # --- Override check ---
                 if rule.always_continue_service:
                     response_json = rule.override_service_response or {"status": "success", "action": "continue"}
@@ -96,11 +107,20 @@ def proxy_participant_policy(request):
         return HttpResponseNotAllowed(["GET"])
 
     local_alias = request.GET.get("local_alias")
+    req_protocol = request.GET.get("protocol")
+    req_call_direction = request.GET.get("call_direction")
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
             if re.search(rule.regex, local_alias or ""):
+                # Check protocol/call_direction match if specified
+                if rule.protocols and req_protocol not in rule.protocols:
+                    continue
+                if rule.call_directions and req_call_direction not in rule.call_directions:
+                    continue
+
                 # --- Override check ---
                 if rule.always_continue_participant:
                     response_json = rule.override_participant_response or {"status": "success", "action": "continue"}
@@ -141,7 +161,32 @@ def proxy_participant_policy(request):
 # -----------------------------
 def rule_list(request):
     rules = PolicyProxyRule.objects.all().order_by("priority", "-updated_at")
-    return render(request, "policy_router/rule_list.html", {"rules": rules})
+
+    protocols = request.GET.getlist("protocols")
+    call_directions = request.GET.getlist("call_directions")
+
+    if protocols:
+        q = Q()
+        for proto in protocols:
+            q |= Q(protocols__icontains=proto)
+        rules = rules.filter(q)
+
+    if call_directions:
+        q = Q()
+        for cd in call_directions:
+            q |= Q(call_directions__icontains=cd)
+        rules = rules.filter(q)
+
+    return render(request, "policy_router/rule_list.html", {
+        "rules": rules,
+        "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
+        "call_direction_choices": PolicyProxyRule.CALL_DIRECTION_CHOICES,
+        "filters": {
+            "protocols": protocols,
+            "call_directions": call_directions,
+        }
+    })
+
 
 
 def rule_create(request):
@@ -189,13 +234,20 @@ def log_list(request):
     start_datetime = request.GET.get("start_datetime")
     end_datetime = request.GET.get("end_datetime")
 
+    protocols = request.GET.getlist("protocols")
+    call_directions = request.GET.getlist("call_directions")
+
     if local_alias:
         logs = logs.filter(request_path__icontains=local_alias)
     if rule_id:
         logs = logs.filter(rule_id=rule_id)
+    if protocols:
+        logs = logs.filter(protocol__in=protocols)
+    if call_directions:
+        logs = logs.filter(call_direction__in=call_directions)
     if start_datetime:
         try:
-            start_dt = datetime.fromisoformat(start_datetime)  # e.g. 2025-10-02T10:00
+            start_dt = datetime.fromisoformat(start_datetime)
             logs = logs.filter(created_at__gte=start_dt)
         except ValueError:
             pass
@@ -213,9 +265,13 @@ def log_list(request):
     return render(request, "policy_router/log_list.html", {
         "page_obj": page_obj,
         "rules": PolicyProxyRule.objects.all(),
+        "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
+        "call_direction_choices": PolicyProxyRule.CALL_DIRECTION_CHOICES,
         "filters": {
             "local_alias": local_alias or "",
             "rule": rule_id or "",
+            "protocols": protocols,
+            "call_directions": call_directions,
             "start_datetime": start_datetime or "",
             "end_datetime": end_datetime or "",
         }

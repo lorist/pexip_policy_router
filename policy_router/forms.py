@@ -4,6 +4,20 @@ from .models import PolicyProxyRule
 
 
 class PolicyProxyRuleForm(forms.ModelForm):
+    protocols = forms.MultipleChoiceField(
+        choices=PolicyProxyRule.PROTOCOL_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,  # or forms.SelectMultiple if you prefer
+        label="Protocols",
+    )
+
+    call_directions = forms.MultipleChoiceField(
+        choices=PolicyProxyRule.CALL_DIRECTION_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label="Call Directions",
+    )
+
     class Meta:
         model = PolicyProxyRule
         fields = [
@@ -11,6 +25,8 @@ class PolicyProxyRuleForm(forms.ModelForm):
             "regex",
             "priority",
             "is_active",
+            "protocols",
+            "call_directions",
             "service_target_url",
             "always_continue_service",
             "override_service_response",
@@ -36,8 +52,19 @@ class PolicyProxyRuleForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Pre-populate defaults if checkboxes are ticked but no text provided
+        # Pre-fill dropdowns with JSONField values
+        if self.instance and self.instance.pk:
+            self.initial["protocols"] = self.instance.protocols or []
+            self.initial["call_directions"] = self.instance.call_directions or []
+
+        # Defaults for overrides
         if self.instance.always_continue_service and not self.instance.override_service_response:
             self.initial["override_service_response"] = '{"status": "success", "action": "continue"}'
         if self.instance.always_continue_participant and not self.instance.override_participant_response:
             self.initial["override_participant_response"] = '{"status": "success", "action": "continue"}'
+
+    def clean_protocols(self):
+        return self.cleaned_data.get("protocols", [])
+
+    def clean_call_directions(self):
+        return self.cleaned_data.get("call_directions", [])

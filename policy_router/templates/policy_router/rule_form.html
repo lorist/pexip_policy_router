@@ -1,106 +1,127 @@
 {% extends "policy_router/base.html" %}
+{% block title %}Rule{% endblock %}
 {% block content %}
 
 <h2>{% if form.instance.pk %}Edit{% else %}Create{% endif %} Rule</h2>
 
-<form method="post" class="card p-4 shadow-sm">
+<form method="post" class="needs-validation">
   {% csrf_token %}
 
-  <div class="mb-3">
-    {{ form.name.label_tag }} {{ form.name }}
-  </div>
-  <div class="mb-3">
-    {{ form.regex.label_tag }} {{ form.regex }}
-  </div>
-  <div class="mb-3">
-    {{ form.priority.label_tag }} {{ form.priority }}
-  </div>
-  <div class="form-check mb-3">
-    {{ form.is_active }} {{ form.is_active.label_tag }}
-  </div>
-
-  <hr>
-
-  <div class="mb-3">
-    {{ form.service_target_url.label_tag }} {{ form.service_target_url }}
-  </div>
-  <div class="form-check mb-3">
-    {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
-  </div>
-  <div class="mb-3" id="service-response-block" style="display:none;">
-    {{ form.override_service_response.label_tag }} {{ form.override_service_response }}
+  <!-- Match Criteria -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Match Criteria</strong>
+    </div>
+    <div class="card-body row g-3 align-items-end">
+      <div class="col-md-4">
+        {{ form.name.label_tag }} {{ form.name }}
+      </div>
+      <div class="col-md-4">
+        {{ form.regex.label_tag }} {{ form.regex }}
+      </div>
+      <div class="col-md-2">
+        {{ form.protocols.label_tag }} {{ form.protocols }}
+      </div>
+      <div class="col-md-2">
+        {{ form.call_directions.label_tag }} {{ form.call_directions }}
+      </div>
+    </div>
   </div>
 
-  <hr>
-
-  <div class="mb-3">
-    {{ form.participant_target_url.label_tag }} {{ form.participant_target_url }}
-  </div>
-  <div class="form-check mb-3">
-    {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
-  </div>
-  <div class="mb-3" id="participant-response-block" style="display:none;">
-    {{ form.override_participant_response.label_tag }} {{ form.override_participant_response }}
-  </div>
-
-  <hr>
-
-  <div class="mb-3">
-    {{ form.basic_auth_username.label_tag }} {{ form.basic_auth_username }}
-  </div>
-  <div class="mb-3">
-    {{ form.basic_auth_password.label_tag }} {{ form.basic_auth_password }}
+  <!-- Service policy -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Service Policy</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.service_target_url.label_tag }} {{ form.service_target_url }}
+      </div>
+      <div class="col-md-6">
+        {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
+        <div id="service-override-container" class="mt-2">
+          {{ form.override_service_response.label_tag }} {{ form.override_service_response }}
+        </div>
+      </div>
+    </div>
   </div>
 
-  <button type="submit" class="btn btn-primary">Save</button>
-  <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary">Cancel</a>
+  <!-- Participant policy -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Participant Policy</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.participant_target_url.label_tag }} {{ form.participant_target_url }}
+      </div>
+      <div class="col-md-6">
+        {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
+        <div id="participant-override-container" class="mt-2">
+          {{ form.override_participant_response.label_tag }} {{ form.override_participant_response }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authentication -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Authentication</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        {{ form.basic_auth_username.label_tag }} {{ form.basic_auth_username }}
+      </div>
+      <div class="col-md-6">
+        {{ form.basic_auth_password.label_tag }} {{ form.basic_auth_password }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Management -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Management</strong>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        {{ form.priority.label_tag }} {{ form.priority }}
+      </div>
+      <div class="col-md-3">
+        {{ form.is_active.label_tag }} {{ form.is_active }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    <a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary btn-sm">Cancel</a>
+  </div>
 </form>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  const serviceCheckbox = document.querySelector("#id_always_continue_service");
-  const serviceBlock = document.querySelector("#service-response-block");
-  const serviceTextarea = document.querySelector("#id_override_service_response");
+  const serviceToggle = document.querySelector("[name=always_continue_service]");
+  const serviceOverride = document.getElementById("service-override-container");
+  const participantToggle = document.querySelector("[name=always_continue_participant]");
+  const participantOverride = document.getElementById("participant-override-container");
 
-  const participantCheckbox = document.querySelector("#id_always_continue_participant");
-  const participantBlock = document.querySelector("#participant-response-block");
-  const participantTextarea = document.querySelector("#id_override_participant_response");
-
-  function toggleService() {
-    if (serviceCheckbox && serviceCheckbox.checked) {
-      serviceBlock.style.display = "block";
-      if (!serviceTextarea.value || serviceTextarea.value.trim() === "") {
-        serviceTextarea.value = '{"status": "success", "action": "continue"}';
-      }
+  function toggle(el, container) {
+    if (el.checked) {
+      container.style.display = "block";
     } else {
-      serviceBlock.style.display = "none";
-      serviceTextarea.value = ""; // clear when unchecked
+      container.style.display = "none";
     }
   }
 
-  function toggleParticipant() {
-    if (participantCheckbox && participantCheckbox.checked) {
-      participantBlock.style.display = "block";
-      if (!participantTextarea.value || participantTextarea.value.trim() === "") {
-        participantTextarea.value = '{"status": "success", "action": "continue"}';
-      }
-    } else {
-      participantBlock.style.display = "none";
-      participantTextarea.value = ""; // clear when unchecked
-    }
-  }
+  serviceToggle.addEventListener("change", () => toggle(serviceToggle, serviceOverride));
+  participantToggle.addEventListener("change", () => toggle(participantToggle, participantOverride));
 
-  if (serviceCheckbox) {
-    serviceCheckbox.addEventListener("change", toggleService);
-    toggleService(); // run once on load
-  }
-  if (participantCheckbox) {
-    participantCheckbox.addEventListener("change", toggleParticipant);
-    toggleParticipant(); // run once on load
-  }
+  toggle(serviceToggle, serviceOverride);
+  toggle(participantToggle, participantOverride);
 });
 </script>
-
-
 
 {% endblock %}
