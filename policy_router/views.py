@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
+from django.views.decorators.http import require_http_methods
 from django.urls import reverse
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -43,6 +44,106 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
         protocol=request.GET.get("protocol"),
     )
 
+    # -----------------------------
+    # Rule Tester
+    # -----------------------------
+
+@require_http_methods(["GET", "POST"])
+def rule_tester(request):
+    result = None
+    matched_rule = None
+    selected_type = "service"
+
+    if request.method == "POST":
+        selected_type = request.POST.get("policy_type", "service")
+        local_alias = request.POST.get("local_alias")
+        protocol = request.POST.get("protocol")
+        call_direction = request.POST.get("call_direction")
+
+        rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
+
+        for rule in rules:
+            try:
+                # Match alias
+                if not re.search(rule.regex, local_alias or ""):
+                    continue
+                # Match protocol and call direction
+                if rule.protocols and protocol not in rule.protocols:
+                    continue
+                if rule.call_directions and call_direction not in rule.call_directions:
+                    continue
+
+                matched_rule = rule
+
+                # --- Simulated service/participant handling ---
+                if selected_type == "service":
+                    if rule.always_continue_service:
+                        response_data = rule.override_service_response or {"status": "success", "action": "continue"}
+                        result = {
+                            "matched": True,
+                            "type": "override",
+                            "response": json.dumps(response_data),  # ✅ serialize JSON properly
+                            "rule": rule,
+                            "mode": "service",
+                        }
+                    elif rule.service_target_url:
+                        result = {
+                            "matched": True,
+                            "type": "proxy",
+                            "response": json.dumps({"info": f"Would proxy to {rule.service_target_url}"}),
+                            "rule": rule,
+                            "mode": "service",
+                        }
+                    else:
+                        result = {
+                            "matched": True,
+                            "type": "none",
+                            "response": json.dumps({"warning": "No target or override set"}),
+                            "rule": rule,
+                            "mode": "service",
+                        }
+
+                else:  # participant mode
+                    if rule.always_continue_participant:
+                        response_data = rule.override_participant_response or {"status": "success", "action": "continue"}
+                        result = {
+                            "matched": True,
+                            "type": "override",
+                            "response": json.dumps(response_data),  # ✅ serialize JSON properly
+                            "rule": rule,
+                            "mode": "participant",
+                        }
+                    elif rule.participant_target_url:
+                        result = {
+                            "matched": True,
+                            "type": "proxy",
+                            "response": json.dumps({"info": f"Would proxy to {rule.participant_target_url}"}),
+                            "rule": rule,
+                            "mode": "participant",
+                        }
+                    else:
+                        result = {
+                            "matched": True,
+                            "type": "none",
+                            "response": json.dumps({"warning": "No target or override set"}),
+                            "rule": rule,
+                            "mode": "participant",
+                        }
+
+                break
+            except re.error:
+                continue
+
+        if not result:
+            result = {"matched": False, "error": "No matching rule found"}
+
+    return render(request, "policy_router/rule_tester.html", {
+        "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
+        "call_direction_choices": PolicyProxyRule.CALL_DIRECTION_CHOICES,
+        "result": result,
+        "matched_rule": matched_rule,
+        "selected_type": selected_type,
+    })
 
 # -----------------------------
 # Proxy Views

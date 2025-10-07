@@ -1,0 +1,154 @@
+{% extends "policy_router/base.html" %}
+{% block title %}Rule Tester{% endblock %}
+{% block content %}
+<h2>Rule Evaluation Simulator</h2>
+<p class="text-muted">Test how service or participant policy requests would be evaluated.</p>
+
+<form method="post" class="card p-3 mb-4 shadow-sm">
+  {% csrf_token %}
+  <div class="row g-3 align-items-end mb-3">
+    <div class="col-md-3">
+      <label class="form-label">Policy Type</label>
+      <div class="d-flex gap-3">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="policy_type" id="service" value="service" {% if selected_type == "service" %}checked{% endif %}>
+          <label class="form-check-label" for="service">Service Policy</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="policy_type" id="participant" value="participant" {% if selected_type == "participant" %}checked{% endif %}>
+          <label class="form-check-label" for="participant">Participant Policy</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Local Alias</label>
+      <input type="text" class="form-control" name="local_alias" placeholder="room-101" required>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Protocol</label>
+      <select name="protocol" class="form-select" required>
+        {% for key, label in protocol_choices %}
+          <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Call Direction</label>
+      <select name="call_direction" class="form-select" required>
+        {% for key, label in call_direction_choices %}
+          <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="text-end">
+    <button type="submit" class="btn btn-primary">Simulate</button>
+  </div>
+</form>
+
+{% if result %}
+  {% if result.matched %}
+    <div class="alert alert-success">
+      <strong>Matched Rule:</strong> {{ result.rule.name }}<br>
+      <strong>Mode:</strong> {{ result.mode|title }}<br>
+      <strong>Type:</strong> {{ result.type|title }}
+    </div>
+
+    <h5>Simulated Response:</h5>
+    {% if result.response %}
+      {% comment %}Generate a stable ID for the JSON element{% endcomment %}
+      {% if result.rule and result.rule.id %}
+        {% with json_id="response_json_"|add:result.rule.id|stringformat:"s" %}
+          <script type="application/json" id="{{ json_id }}">
+            {{ result.response|safe }}
+          </script>
+        {% endwith %}
+      {% else %}
+        <script type="application/json" id="response_json_temp">
+          {{ result.response|safe }}
+        </script>
+      {% endif %}
+
+      <pre class="json-viewer" id="simulated-json"></pre>
+
+      <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        const outputEl = document.getElementById("simulated-json");
+
+        // Collect *all* script[type="application/json"] on the page
+        const allScripts = Array.from(document.querySelectorAll('script[type="application/json"]'));
+
+        // Debug info (you can remove later)
+        console.log("Found JSON <script> elements:", allScripts);
+
+        if (allScripts.length === 0) {
+          outputEl.textContent = "⚠️ No JSON script element found.";
+          return;
+        }
+
+        // Pick the one with JSON content (not empty)
+        let scriptEl = allScripts.find(s => s.textContent.trim().startsWith("{"));
+        if (!scriptEl) {
+          outputEl.textContent = "⚠️ No valid JSON script content found.";
+          return;
+        }
+
+        try {
+          const rawText = scriptEl.textContent.trim();
+          console.log("Raw JSON content:", rawText);
+
+          const raw = JSON.parse(rawText);
+          const pretty = JSON.stringify(raw, null, 2);
+
+          function syntaxHighlight(json) {
+            json = json.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;');
+            return json.replace(
+              /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+              function (match) {
+                let cls = 'number';
+                if (/^"/.test(match)) {
+                  if (/:$/.test(match)) cls = 'key';
+                  else cls = 'string';
+                } else if (/true|false/.test(match)) cls = 'boolean';
+                else if (/null/.test(match)) cls = 'null';
+                return '<span class="' + cls + '">' + match + '</span>';
+              }
+            );
+          }
+
+          outputEl.innerHTML = syntaxHighlight(pretty);
+        } catch (e) {
+          console.error("JSON parse error:", e);
+          outputEl.textContent = "❌ Invalid or empty JSON.";
+        }
+      });
+      </script>
+
+
+    {% else %}
+      <pre class="json-viewer text-muted">No response generated.</pre>
+    {% endif %}
+
+
+    <div class="mt-3">
+      <h6>Matched Rule Details:</h6>
+      <ul>
+        <li><strong>Regex:</strong> <code>{{ result.rule.regex }}</code></li>
+        <li><strong>Protocols:</strong> {{ result.rule.protocols|join:", " }}</li>
+        <li><strong>Call Directions:</strong> {{ result.rule.call_directions|join:", " }}</li>
+        <li><strong>Priority:</strong> {{ result.rule.priority }}</li>
+      </ul>
+    </div>
+  {% else %}
+    <div class="alert alert-warning">
+      <strong>No rule matched.</strong> {{ result.error }}
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock %}
