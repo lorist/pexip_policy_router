@@ -57,11 +57,11 @@
       </div>
       <div class="col-md-6">
         {{ form.always_continue_service }} {{ form.always_continue_service.label_tag }}
-        <div class="form-text">Always return a static "continue" response instead of proxying.</div>
+        <div class="form-text">Always return a static response instead of proxying.</div>
         <div class="mt-2" id="service-override-container">
           {{ form.override_service_response.label_tag }}
           {{ form.override_service_response }}
-          <div class="form-text">Custom JSON response if "Always continue" is enabled.</div>
+          <div class="form-text">Custom JSON response if "Custom response" is enabled.</div>
         </div>
       </div>
     </div>
@@ -80,11 +80,11 @@
       </div>
       <div class="col-md-6">
         {{ form.always_continue_participant }} {{ form.always_continue_participant.label_tag }}
-        <div class="form-text">Always return a static "continue" response instead of proxying.</div>
+        <div class="form-text">Always return a static response instead of proxying.</div>
         <div class="mt-2" id="participant-override-container">
           {{ form.override_participant_response.label_tag }}
           {{ form.override_participant_response }}
-          <div class="form-text">Custom JSON response if "Always continue" is enabled.</div>
+          <div class="form-text">Custom JSON response if "Custom response" is enabled.</div>
         </div>
       </div>
     </div>

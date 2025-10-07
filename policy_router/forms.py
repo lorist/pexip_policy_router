@@ -35,6 +35,10 @@ class PolicyProxyRuleForm(forms.ModelForm):
             "basic_auth_username",
             "basic_auth_password",
         ]
+        labels = {
+            "always_continue_service": "Custom response (Service)",
+            "always_continue_participant": "Custom response (Participant)",
+        }
         widgets = {
             "regex": forms.TextInput(attrs={"placeholder": r"^room\-\d+$"}),
             "service_target_url": forms.URLInput(attrs={"placeholder": "https://upstream.example.com"}),
