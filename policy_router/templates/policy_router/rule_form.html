@@ -139,33 +139,85 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const serviceToggle = document.querySelector("[name=always_continue_service]");
-  const serviceOverrideContainer = document.getElementById("service-override-container");
-  const serviceOverrideInput = document.getElementById("id_override_service_response");
+  const serviceContainer = document.getElementById("service-override-container");
+  const serviceInput = document.getElementById("id_override_service_response");
 
   const participantToggle = document.querySelector("[name=always_continue_participant]");
-  const participantOverrideContainer = document.getElementById("participant-override-container");
-  const participantOverrideInput = document.getElementById("id_override_participant_response");
+  const participantContainer = document.getElementById("participant-override-container");
+  const participantInput = document.getElementById("id_override_participant_response");
 
-  function toggleOverride(toggle, container, input) {
+  // Create inline error message elements
+  const serviceError = document.createElement("div");
+  serviceError.className = "invalid-feedback";
+  serviceInput.insertAdjacentElement("afterend", serviceError);
+
+  const participantError = document.createElement("div");
+  participantError.className = "invalid-feedback";
+  participantInput.insertAdjacentElement("afterend", participantError);
+
+  function toggleVisibility(toggle, container, input) {
+    if (!toggle || !container || !input) return;
     if (toggle.checked) {
       container.style.display = "block";
       if (!input.value.trim()) {
-        input.value = JSON.stringify({status: "success", action: "continue"}, null, 2);
+        input.value = JSON.stringify({ status: "success", action: "continue" }, null, 2);
       }
     } else {
       container.style.display = "none";
       input.value = "";
+      input.classList.remove("is-invalid", "is-valid");
     }
   }
 
-  // Initial load
-  toggleOverride(serviceToggle, serviceOverrideContainer, serviceOverrideInput);
-  toggleOverride(participantToggle, participantOverrideContainer, participantOverrideInput);
+  function validateJSON(input, errorDiv) {
+    const value = input.value.trim();
+    if (!value) {
+      input.classList.remove("is-invalid", "is-valid");
+      errorDiv.textContent = "";
+      return true; // empty allowed
+    }
+    try {
+      JSON.parse(value);
+      input.classList.remove("is-invalid");
+      input.classList.add("is-valid");
+      errorDiv.textContent = "";
+      return true;
+    } catch (e) {
+      input.classList.remove("is-valid");
+      input.classList.add("is-invalid");
+      errorDiv.textContent = "Invalid JSON format. Please correct before saving.";
+      return false;
+    }
+  }
 
-  // Add event listeners
-  serviceToggle.addEventListener("change", () => toggleOverride(serviceToggle, serviceOverrideContainer, serviceOverrideInput));
-  participantToggle.addEventListener("change", () => toggleOverride(participantToggle, participantOverrideContainer, participantOverrideInput));
+  // Attach real-time validation
+  [serviceInput, participantInput].forEach(input => {
+    input.addEventListener("input", () => {
+      const errorDiv = input === serviceInput ? serviceError : participantError;
+      validateJSON(input, errorDiv);
+    });
+  });
+
+  // Toggle behavior
+  serviceToggle.addEventListener("change", () => toggleVisibility(serviceToggle, serviceContainer, serviceInput));
+  participantToggle.addEventListener("change", () => toggleVisibility(participantToggle, participantContainer, participantInput));
+
+  // Initialize on page load
+  toggleVisibility(serviceToggle, serviceContainer, serviceInput);
+  toggleVisibility(participantToggle, participantContainer, participantInput);
+
+  // Validate before submit
+  const form = document.querySelector("form");
+  form.addEventListener("submit", function(e) {
+    const serviceValid = validateJSON(serviceInput, serviceError);
+    const participantValid = validateJSON(participantInput, participantError);
+    if (!serviceValid || !participantValid) {
+      e.preventDefault();
+      alert("Please fix invalid JSON before saving.");
+    }
+  });
 });
 </script>
+
 
 {% endblock %}
