@@ -4,6 +4,19 @@ from .models import PolicyProxyRule
 
 
 class PolicyProxyRuleForm(forms.ModelForm):
+    protocols = forms.MultipleChoiceField(
+        choices=PolicyProxyRule.PROTOCOL_CHOICES,
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": "form-select"}),
+        help_text="Leave empty to match any protocol."
+    )
+
+    call_directions = forms.MultipleChoiceField(
+        choices=PolicyProxyRule.CALL_DIRECTION_CHOICES,
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": "form-select"}),
+        help_text="Leave empty to match any call direction."
+    )
     class Meta:
         model = PolicyProxyRule
         fields = [
@@ -24,17 +37,6 @@ class PolicyProxyRuleForm(forms.ModelForm):
         ]
         widgets = {
             "regex": forms.TextInput(attrs={"placeholder": r"^room\-\d+$"}),
-
-            # Multi-select dropdowns for protocols + call directions
-            "protocols": forms.SelectMultiple(
-                choices=PolicyProxyRule.PROTOCOL_CHOICES,
-                attrs={"class": "form-select", "id": "id_protocols"},
-            ),
-            "call_directions": forms.SelectMultiple(
-                choices=PolicyProxyRule.CALL_DIRECTION_CHOICES,
-                attrs={"class": "form-select", "id": "id_call_directions"},
-            ),
-
             "service_target_url": forms.URLInput(attrs={"placeholder": "https://upstream.example.com"}),
             "participant_target_url": forms.URLInput(attrs={"placeholder": "https://upstream.example.com"}),
             "basic_auth_password": forms.PasswordInput(render_value=True),
@@ -47,17 +49,23 @@ class PolicyProxyRuleForm(forms.ModelForm):
         }
 
     def clean_protocols(self):
-        """Always return a list (never None)."""
-        return self.cleaned_data.get("protocols") or []
+        """Ensure a list is always stored, not JSON string."""
+        return self.cleaned_data.get("protocols", [])
 
     def clean_call_directions(self):
-        """Always return a list (never None)."""
-        return self.cleaned_data.get("call_directions") or []
+        """Ensure a list is always stored, not JSON string."""
+        return self.cleaned_data.get("call_directions", [])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Ensure defaults for overrides if toggles are set
+        # Set initial values from the instance (JSONField stores list)
+        if isinstance(self.instance.protocols, list):
+            self.initial["protocols"] = self.instance.protocols
+        if isinstance(self.instance.call_directions, list):
+            self.initial["call_directions"] = self.instance.call_directions
+
+        # Default JSON responses if toggles are active but empty
         if self.instance.always_continue_service and not self.instance.override_service_response:
             self.initial["override_service_response"] = '{"status": "success", "action": "continue"}'
         if self.instance.always_continue_participant and not self.instance.override_participant_response:

@@ -62,9 +62,9 @@ def proxy_service_policy(request):
         try:
             if re.search(rule.regex, local_alias or ""):
                 # Check protocol/call_direction match if specified
-                if rule.protocols and req_protocol not in rule.protocols:
+                if rule.protocols and req_protocol and req_protocol not in rule.protocols:
                     continue
-                if rule.call_directions and req_call_direction not in rule.call_directions:
+                if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
 
                 # --- Override check ---
@@ -116,9 +116,9 @@ def proxy_participant_policy(request):
         try:
             if re.search(rule.regex, local_alias or ""):
                 # Check protocol/call_direction match if specified
-                if rule.protocols and req_protocol not in rule.protocols:
+                if rule.protocols and req_protocol and req_protocol not in rule.protocols:
                     continue
-                if rule.call_directions and req_call_direction not in rule.call_directions:
+                if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
 
                 # --- Override check ---
