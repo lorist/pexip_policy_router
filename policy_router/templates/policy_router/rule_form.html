@@ -155,6 +155,9 @@ document.addEventListener("DOMContentLoaded", function() {
   participantError.className = "invalid-feedback";
   participantInput.insertAdjacentElement("afterend", participantError);
 
+  // -------------------------------
+  // Helpers
+  // -------------------------------
   function toggleVisibility(toggle, container, input) {
     if (!toggle || !container || !input) return;
     if (toggle.checked) {
@@ -190,23 +193,53 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Attach real-time validation
+  function prettyPrintJSON(input, errorDiv) {
+    const value = input.value.trim();
+    if (!value) return;
+    try {
+      const parsed = JSON.parse(value);
+      input.value = JSON.stringify(parsed, null, 2);
+      input.classList.add("is-valid");
+      errorDiv.textContent = "";
+    } catch {
+      // Leave as is; handled by validateJSON
+    }
+  }
+
+  // -------------------------------
+  // Real-time + on-blur validation
+  // -------------------------------
   [serviceInput, participantInput].forEach(input => {
     input.addEventListener("input", () => {
       const errorDiv = input === serviceInput ? serviceError : participantError;
       validateJSON(input, errorDiv);
     });
+
+    input.addEventListener("blur", () => {
+      const errorDiv = input === serviceInput ? serviceError : participantError;
+      if (validateJSON(input, errorDiv)) {
+        prettyPrintJSON(input, errorDiv);
+      }
+    });
   });
 
-  // Toggle behavior
-  serviceToggle.addEventListener("change", () => toggleVisibility(serviceToggle, serviceContainer, serviceInput));
-  participantToggle.addEventListener("change", () => toggleVisibility(participantToggle, participantContainer, participantInput));
+  // -------------------------------
+  // Toggle logic
+  // -------------------------------
+  serviceToggle.addEventListener("change", () =>
+    toggleVisibility(serviceToggle, serviceContainer, serviceInput)
+  );
+  participantToggle.addEventListener("change", () =>
+    toggleVisibility(participantToggle, participantContainer, participantInput)
+  );
 
-  // Initialize on page load
+  // Initialize on load
   toggleVisibility(serviceToggle, serviceContainer, serviceInput);
   toggleVisibility(participantToggle, participantContainer, participantInput);
 
-  // Validate before submit
+  // -------------------------------
+  // Prevent form submission if invalid
+  // -------------------------------
   const form = document.querySelector("form");
   form.addEventListener("submit", function(e) {
     const serviceValid = validateJSON(serviceInput, serviceError);
@@ -218,6 +251,7 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
+
 
 
 {% endblock %}
