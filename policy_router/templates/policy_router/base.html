@@ -63,6 +63,39 @@
       background: #1e1e1e;
       color: #d4d4d4;
     }
+    /* === JSON Editor Modal Theme === */
+    #jsonEditorModal .modal-content {
+      transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+      border-radius: 0.5rem;
+    }
+
+    /* Light mode */
+    :root[data-bs-theme="light"] #jsonEditorModal .modal-content {
+      background-color: #ffffff;
+      color: #212529;
+      border: 1px solid #dee2e6;
+    }
+
+    /* Dark mode */
+    :root[data-bs-theme="dark"] #jsonEditorModal .modal-content {
+      background-color: #1e1e1e;
+      color: #f8f9fa;
+      border: 1px solid #444;
+    }
+
+    /* Make CodeMirror inside modal theme-aware */
+    :root[data-bs-theme="light"] .CodeMirror {
+      background: #ffffff !important;
+      color: #212529 !important;
+      border: 1px solid #dee2e6;
+    }
+
+    :root[data-bs-theme="dark"] .CodeMirror {
+      background: #1e1e1e !important;
+      color: #f8f9fa !important;
+      border: 1px solid #444;
+    }
+
   </style>
 </head>
 <body>
