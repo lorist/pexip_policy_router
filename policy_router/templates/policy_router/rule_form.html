@@ -146,7 +146,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const participantContainer = document.getElementById("participant-override-container");
   const participantInput = document.getElementById("id_override_participant_response");
 
-  // Create inline error message elements
+  // Inline error elements
   const serviceError = document.createElement("div");
   serviceError.className = "invalid-feedback";
   serviceInput.insertAdjacentElement("afterend", serviceError);
@@ -156,7 +156,23 @@ document.addEventListener("DOMContentLoaded", function() {
   participantInput.insertAdjacentElement("afterend", participantError);
 
   // -------------------------------
-  // Helpers
+  // Pretty-print JSON on load (edit mode)
+  // -------------------------------
+  function prettyPrintOnLoad(input) {
+    if (!input || !input.value.trim()) return;
+    try {
+      const parsed = JSON.parse(input.value);
+      input.value = JSON.stringify(parsed, null, 2);
+    } catch {
+      // leave invalid content alone
+    }
+  }
+
+  prettyPrintOnLoad(serviceInput);
+  prettyPrintOnLoad(participantInput);
+
+  // -------------------------------
+  // Visibility + validation helpers
   // -------------------------------
   function toggleVisibility(toggle, container, input) {
     if (!toggle || !container || !input) return;
@@ -177,7 +193,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (!value) {
       input.classList.remove("is-invalid", "is-valid");
       errorDiv.textContent = "";
-      return true; // empty allowed
+      return true;
     }
     try {
       JSON.parse(value);
@@ -185,7 +201,7 @@ document.addEventListener("DOMContentLoaded", function() {
       input.classList.add("is-valid");
       errorDiv.textContent = "";
       return true;
-    } catch (e) {
+    } catch {
       input.classList.remove("is-valid");
       input.classList.add("is-invalid");
       errorDiv.textContent = "Invalid JSON format. Please correct before saving.";
@@ -202,30 +218,23 @@ document.addEventListener("DOMContentLoaded", function() {
       input.classList.add("is-valid");
       errorDiv.textContent = "";
     } catch {
-      // Leave as is; handled by validateJSON
+      // ignore
     }
   }
 
-  // -------------------------------
-  // Real-time + on-blur validation
-  // -------------------------------
+  // Live validation + auto-format
   [serviceInput, participantInput].forEach(input => {
     input.addEventListener("input", () => {
-      const errorDiv = input === serviceInput ? serviceError : participantError;
-      validateJSON(input, errorDiv);
+      const err = input === serviceInput ? serviceError : participantError;
+      validateJSON(input, err);
     });
-
     input.addEventListener("blur", () => {
-      const errorDiv = input === serviceInput ? serviceError : participantError;
-      if (validateJSON(input, errorDiv)) {
-        prettyPrintJSON(input, errorDiv);
-      }
+      const err = input === serviceInput ? serviceError : participantError;
+      if (validateJSON(input, err)) prettyPrintJSON(input, err);
     });
   });
 
-  // -------------------------------
-  // Toggle logic
-  // -------------------------------
+  // Toggle visibility
   serviceToggle.addEventListener("change", () =>
     toggleVisibility(serviceToggle, serviceContainer, serviceInput)
   );
@@ -233,24 +242,22 @@ document.addEventListener("DOMContentLoaded", function() {
     toggleVisibility(participantToggle, participantContainer, participantInput)
   );
 
-  // Initialize on load
+  // Initialize
   toggleVisibility(serviceToggle, serviceContainer, serviceInput);
   toggleVisibility(participantToggle, participantContainer, participantInput);
 
-  // -------------------------------
-  // Prevent form submission if invalid
-  // -------------------------------
-  const form = document.querySelector("form");
-  form.addEventListener("submit", function(e) {
-    const serviceValid = validateJSON(serviceInput, serviceError);
-    const participantValid = validateJSON(participantInput, participantError);
-    if (!serviceValid || !participantValid) {
+  // Block invalid submission
+  document.querySelector("form").addEventListener("submit", function(e) {
+    const sValid = validateJSON(serviceInput, serviceError);
+    const pValid = validateJSON(participantInput, participantError);
+    if (!sValid || !pValid) {
       e.preventDefault();
       alert("Please fix invalid JSON before saving.");
     }
   });
 });
 </script>
+
 
 
 
