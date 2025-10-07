@@ -91,6 +91,7 @@
             Open JSON Editor
           </button>
 
+
           <div class="form-text">Custom JSON response if "Custom response" is enabled.</div>
         </div>
       </div>
@@ -136,15 +137,15 @@
   </div>
   <!-- JSON Editor Modal -->
   <div class="modal fade" id="jsonEditorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Edit JSON Response</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-body">
-          <textarea id="jsonEditorTextarea" class="form-control" rows="15" style="font-family: monospace;"></textarea>
-          <div id="jsonEditorError" class="invalid-feedback d-block mt-2"></div>
+        <div class="modal-body p-0">
+          <textarea id="jsonEditorTextarea"></textarea>
+          <div id="jsonEditorError" class="invalid-feedback d-block text-danger p-3"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -153,7 +154,6 @@
       </div>
     </div>
   </div>
-
   <!-- Actions -->
   <div class="mt-3">
     <button type="submit" class="btn btn-primary btn-sm">Save</button>
@@ -181,7 +181,7 @@ document.addEventListener("DOMContentLoaded", function() {
   participantInput.insertAdjacentElement("afterend", participantError);
 
   // -------------------------------
-  // Pretty-print JSON on page load
+  // Pretty-print JSON on load
   // -------------------------------
   function prettyPrintOnLoad(input) {
     if (!input || !input.value.trim()) return;
@@ -194,7 +194,7 @@ document.addEventListener("DOMContentLoaded", function() {
   prettyPrintOnLoad(participantInput);
 
   // -------------------------------
-  // Toggle visibility + default JSON
+  // Toggle visibility and defaults
   // -------------------------------
   function toggleVisibility(toggle, container, input) {
     if (toggle.checked) {
@@ -209,23 +209,20 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // -------------------------------
-  // JSON validation
-  // -------------------------------
   function validateJSON(input, errorDiv) {
-    const value = input.value.trim();
-    if (!value) {
+    const val = input.value.trim();
+    if (!val) {
       input.classList.remove("is-invalid", "is-valid");
       errorDiv.textContent = "";
       return true;
     }
     try {
-      JSON.parse(value);
+      JSON.parse(val);
       input.classList.add("is-valid");
       input.classList.remove("is-invalid");
       errorDiv.textContent = "";
       return true;
-    } catch (e) {
+    } catch {
       input.classList.add("is-invalid");
       input.classList.remove("is-valid");
       errorDiv.textContent = "Invalid JSON format.";
@@ -233,15 +230,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Live validation
-  [serviceInput, participantInput].forEach(input => {
-    input.addEventListener("input", () => {
-      const errorDiv = input === serviceInput ? serviceError : participantError;
-      validateJSON(input, errorDiv);
-    });
-  });
-
-  // Toggle logic
   serviceToggle.addEventListener("change", () =>
     toggleVisibility(serviceToggle, serviceContainer, serviceInput)
   );
@@ -253,59 +241,89 @@ document.addEventListener("DOMContentLoaded", function() {
   toggleVisibility(participantToggle, participantContainer, participantInput);
 
   // -------------------------------
-  // JSON Editor Modal logic
+  // CodeMirror JSON Editor Modal
   // -------------------------------
   let activeTextarea = null;
-  const modal = new bootstrap.Modal(document.getElementById("jsonEditorModal"));
-  const editor = document.getElementById("jsonEditorTextarea");
+  const modalEl = document.getElementById("jsonEditorModal");
+  const modal = new bootstrap.Modal(modalEl);
   const errorDiv = document.getElementById("jsonEditorError");
+  const saveBtn = document.getElementById("saveJsonEditorBtn");
+
+  let cm = null;
+
+  function getPreferredTheme() {
+    const darkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return darkMode ? "dracula" : "eclipse";
+  }
+
+  function checkEditorJSON() {
+    const text = cm.getValue();
+    try {
+      JSON.parse(text);
+      cm.getWrapperElement().style.border = "2px solid #28a745"; // green
+      errorDiv.textContent = "";
+      saveBtn.disabled = false;
+      return true;
+    } catch {
+      cm.getWrapperElement().style.border = "2px solid #dc3545"; // red
+      errorDiv.textContent = "Invalid JSON format.";
+      saveBtn.disabled = true;
+      return false;
+    }
+  }
+
+  function attachLiveValidation() {
+    cm.on("change", () => checkEditorJSON());
+  }
 
   document.querySelectorAll(".open-json-editor").forEach(btn => {
     btn.addEventListener("click", () => {
       const targetId = btn.getAttribute("data-target");
       activeTextarea = document.getElementById(targetId);
-      editor.value = activeTextarea.value.trim();
-      try {
-        const parsed = JSON.parse(editor.value);
-        editor.value = JSON.stringify(parsed, null, 2);
-        errorDiv.textContent = "";
-      } catch {
-        // leave as-is if invalid
+
+      if (!cm) {
+        cm = CodeMirror.fromTextArea(document.getElementById("jsonEditorTextarea"), {
+          mode: { name: "javascript", json: true },
+          lineNumbers: true,
+          tabSize: 2,
+          theme: getPreferredTheme(),
+          autoCloseBrackets: true,
+        });
+        cm.setSize("100%", "70vh");
+
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
+          cm.setOption("theme", e.matches ? "dracula" : "eclipse");
+        });
+
+        attachLiveValidation();
+      } else {
+        cm.setOption("theme", getPreferredTheme());
       }
+
+      let content = activeTextarea.value.trim();
+      try {
+        const parsed = JSON.parse(content);
+        content = JSON.stringify(parsed, null, 2);
+      } catch {}
+      cm.setValue(content);
+      errorDiv.textContent = "";
+      saveBtn.disabled = false;
       modal.show();
+      setTimeout(() => cm.refresh(), 200);
+      checkEditorJSON();
     });
   });
 
-  editor.addEventListener("input", () => {
-    try {
-      JSON.parse(editor.value);
-      editor.classList.add("is-valid");
-      editor.classList.remove("is-invalid");
-      errorDiv.textContent = "";
-    } catch {
-      editor.classList.remove("is-valid");
-      editor.classList.add("is-invalid");
-      errorDiv.textContent = "Invalid JSON format.";
-    }
+  // Save button: commit JSON back to field
+  saveBtn.addEventListener("click", () => {
+    if (!checkEditorJSON()) return;
+    const formatted = JSON.stringify(JSON.parse(cm.getValue()), null, 2);
+    activeTextarea.value = formatted;
+    modal.hide();
   });
 
-  document.getElementById("saveJsonEditorBtn").addEventListener("click", () => {
-    try {
-      const parsed = JSON.parse(editor.value);
-      const formatted = JSON.stringify(parsed, null, 2);
-      activeTextarea.value = formatted;
-      activeTextarea.classList.add("is-valid");
-      modal.hide();
-    } catch {
-      editor.classList.add("is-invalid");
-      errorDiv.textContent = "Invalid JSON — cannot save.";
-    }
-  });
-
-  // -------------------------------
   // Prevent invalid submission
-  // -------------------------------
-  document.querySelector("form").addEventListener("submit", function(e) {
+  document.querySelector("form").addEventListener("submit", e => {
     const sValid = validateJSON(serviceInput, serviceError);
     const pValid = validateJSON(participantInput, participantError);
     if (!sValid || !pValid) {
