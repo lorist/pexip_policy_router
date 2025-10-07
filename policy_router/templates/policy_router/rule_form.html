@@ -209,6 +209,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
+  // -------------------------------
+  // JSON Validation (for inline textareas)
+  // -------------------------------
   function validateJSON(input, errorDiv) {
     const val = input.value.trim();
     if (!val) {
@@ -230,6 +233,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
+  // Add live validation to textareas directly
+  serviceInput.addEventListener("input", () => validateJSON(serviceInput, serviceError));
+  participantInput.addEventListener("input", () => validateJSON(participantInput, participantError));
+
+  // -------------------------------
+  // Initialize toggle behavior
+  // -------------------------------
   serviceToggle.addEventListener("change", () =>
     toggleVisibility(serviceToggle, serviceContainer, serviceInput)
   );
@@ -314,11 +324,15 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   });
 
-  // Save button: commit JSON back to field
+  // Save button: commit JSON back to textarea + revalidate inline
   saveBtn.addEventListener("click", () => {
     if (!checkEditorJSON()) return;
     const formatted = JSON.stringify(JSON.parse(cm.getValue()), null, 2);
     activeTextarea.value = formatted;
+    validateJSON(
+      activeTextarea,
+      activeTextarea.id === "id_override_service_response" ? serviceError : participantError
+    );
     modal.hide();
   });
 
@@ -333,6 +347,7 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
+
 
 
 {% endblock %}
