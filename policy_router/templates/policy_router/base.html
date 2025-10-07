@@ -10,6 +10,7 @@
   <!-- CodeMirror 6 (JSON mode + theme) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/lib/codemirror.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/theme/eclipse.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/theme/dracula.min.css">
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/lib/codemirror.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/mode/javascript/javascript.min.js"></script>
 
@@ -33,15 +34,44 @@
     .json-viewer .number { color: #b5cea8; }
     .json-viewer .boolean { color: #569cd6; }
     .json-viewer .null { color: #dcdcaa; }
+    /* Theme-aware styling for JSON textareas */
+    textarea#id_override_service_response,
+    textarea#id_override_participant_response {
+      font-family: monospace;
+      background-color: var(--bs-body-bg);
+      color: var(--bs-body-color);
+      border: 1px solid var(--bs-border-color);
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      width: 100%;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    /* Light/Dark modes */
+    :root[data-bs-theme="dark"] textarea#id_override_service_response,
+    :root[data-bs-theme="dark"] textarea#id_override_participant_response {
+      background-color: #1e1e1e;
+      color: #f8f9fa;
+      border-color: #444;
+    }
+
+    :root[data-bs-theme="light"] .json-viewer {
+      background: #f8f9fa;
+      color: #212529;
+    }
+    :root[data-bs-theme="dark"] .json-viewer {
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
   </style>
 </head>
 <body>
   <!-- Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <nav class="navbar navbar-expand-lg bg-body-tertiary fixed-top border-bottom">
     <div class="container-fluid">
       <a class="navbar-brand" href="{% url 'policy_router:log_list' %}">Policy Router</a>
       <div class="collapse navbar-collapse">
-        <ul class="navbar-nav me-auto">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           <li class="nav-item">
             <a class="nav-link" href="{% url 'policy_router:log_list' %}">Logs</a>
           </li>
@@ -50,8 +80,14 @@
           </li>
         </ul>
       </div>
+
+      <!-- 🌗 Theme toggle button -->
+      <button id="theme-toggle" class="btn btn-outline-secondary btn-sm" title="Toggle light/dark mode">
+        <i id="theme-icon" class="bi bi-moon-fill"></i>
+      </button>
     </div>
   </nav>
+
 
   <div class="container">
     {% block content %}{% endblock %}
@@ -59,5 +95,24 @@
 
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const toggleButton = document.getElementById("theme-toggle");
+    const icon = document.getElementById("theme-icon");
+    const storedTheme = localStorage.getItem("theme") || "light";
+
+    document.documentElement.setAttribute("data-bs-theme", storedTheme);
+    icon.className = storedTheme === "dark" ? "bi bi-sun-fill" : "bi bi-moon-fill";
+
+    toggleButton.addEventListener("click", function() {
+      const currentTheme = document.documentElement.getAttribute("data-bs-theme");
+      const newTheme = currentTheme === "light" ? "dark" : "light";
+      document.documentElement.setAttribute("data-bs-theme", newTheme);
+      icon.className = newTheme === "dark" ? "bi bi-sun-fill" : "bi bi-moon-fill";
+      localStorage.setItem("theme", newTheme);
+    });
+  });
+  </script>
+
 </body>
 </html>

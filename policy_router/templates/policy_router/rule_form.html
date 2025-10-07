@@ -161,9 +161,9 @@
   </div>
 </form>
 
-
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+  // === Elements ===
   const serviceToggle = document.querySelector("[name=always_continue_service]");
   const serviceContainer = document.getElementById("service-override-container");
   const serviceInput = document.getElementById("id_override_service_response");
@@ -180,26 +180,22 @@ document.addEventListener("DOMContentLoaded", function() {
   participantError.className = "invalid-feedback";
   participantInput.insertAdjacentElement("afterend", participantError);
 
-  // -------------------------------
-  // Utility: Auto-resize textarea height
-  // -------------------------------
+  // === Detect current theme (from base.html toggle) ===
+  function getTheme() {
+    return document.documentElement.getAttribute("data-bs-theme") === "dark" ? "dracula" : "eclipse";
+  }
+
+  // === Auto-resize ===
   function autoResize(textarea) {
     textarea.style.height = "auto";
     textarea.style.height = textarea.scrollHeight + "px";
   }
+  [serviceInput, participantInput].forEach(el => {
+    el.addEventListener("input", () => autoResize(el));
+    autoResize(el);
+  });
 
-  function enableAutoResize(input) {
-    input.addEventListener("input", () => autoResize(input));
-    // Initial adjustment
-    autoResize(input);
-  }
-
-  enableAutoResize(serviceInput);
-  enableAutoResize(participantInput);
-
-  // -------------------------------
-  // Pretty-print JSON on load
-  // -------------------------------
+  // === Pretty Print JSON on load ===
   function prettyPrintOnLoad(input) {
     if (!input || !input.value.trim()) return;
     try {
@@ -211,9 +207,7 @@ document.addEventListener("DOMContentLoaded", function() {
   prettyPrintOnLoad(serviceInput);
   prettyPrintOnLoad(participantInput);
 
-  // -------------------------------
-  // Toggle visibility and defaults
-  // -------------------------------
+  // === Toggle + Default Handling ===
   function toggleVisibility(toggle, container, input) {
     if (toggle.checked) {
       container.style.display = "block";
@@ -227,10 +221,14 @@ document.addEventListener("DOMContentLoaded", function() {
       input.classList.remove("is-invalid", "is-valid");
     }
   }
+  [[serviceToggle, serviceContainer, serviceInput],
+   [participantToggle, participantContainer, participantInput]
+  ].forEach(([toggle, container, input]) => {
+    toggle.addEventListener("change", () => toggleVisibility(toggle, container, input));
+    toggleVisibility(toggle, container, input);
+  });
 
-  // -------------------------------
-  // JSON Validation (for inline textareas)
-  // -------------------------------
+  // === Inline JSON Validation ===
   function validateJSON(input, errorDiv) {
     const val = input.value.trim();
     if (!val) {
@@ -252,89 +250,67 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Add live validation and resizing to textareas
-  serviceInput.addEventListener("input", () => {
-    validateJSON(serviceInput, serviceError);
-    autoResize(serviceInput);
-  });
-  participantInput.addEventListener("input", () => {
-    validateJSON(participantInput, participantError);
-    autoResize(participantInput);
-  });
-
-  // -------------------------------
-  // Initialize toggle behavior
-  // -------------------------------
-  serviceToggle.addEventListener("change", () =>
-    toggleVisibility(serviceToggle, serviceContainer, serviceInput)
-  );
-  participantToggle.addEventListener("change", () =>
-    toggleVisibility(participantToggle, participantContainer, participantInput)
+  [[serviceInput, serviceError],
+   [participantInput, participantError]
+  ].forEach(([input, err]) =>
+    input.addEventListener("input", () => {
+      validateJSON(input, err);
+      autoResize(input);
+    })
   );
 
-  toggleVisibility(serviceToggle, serviceContainer, serviceInput);
-  toggleVisibility(participantToggle, participantContainer, participantInput);
-
-  // -------------------------------
-  // CodeMirror JSON Editor Modal
-  // -------------------------------
-  let activeTextarea = null;
+  // === CodeMirror JSON Editor Modal ===
   const modalEl = document.getElementById("jsonEditorModal");
   const modal = new bootstrap.Modal(modalEl);
   const errorDiv = document.getElementById("jsonEditorError");
   const saveBtn = document.getElementById("saveJsonEditorBtn");
+  const editorTextarea = document.getElementById("jsonEditorTextarea");
 
   let cm = null;
-
-  function getPreferredTheme() {
-    const darkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return darkMode ? "dracula" : "eclipse";
-  }
+  let activeTextarea = null;
 
   function checkEditorJSON() {
     const text = cm.getValue();
     try {
       JSON.parse(text);
-      cm.getWrapperElement().style.border = "2px solid #28a745"; // green
+      cm.getWrapperElement().style.border = "2px solid #28a745";
       errorDiv.textContent = "";
       saveBtn.disabled = false;
       return true;
     } catch {
-      cm.getWrapperElement().style.border = "2px solid #dc3545"; // red
+      cm.getWrapperElement().style.border = "2px solid #dc3545";
       errorDiv.textContent = "Invalid JSON format.";
       saveBtn.disabled = true;
       return false;
     }
   }
 
-  function attachLiveValidation() {
-    cm.on("change", () => checkEditorJSON());
+  function initCodeMirror() {
+    if (cm) return cm;
+    cm = CodeMirror.fromTextArea(editorTextarea, {
+      mode: { name: "javascript", json: true },
+      lineNumbers: true,
+      tabSize: 2,
+      theme: getTheme(),
+      autoCloseBrackets: true,
+    });
+    cm.setSize("100%", "70vh");
+    cm.on("change", checkEditorJSON);
+    return cm;
   }
 
+  // Open JSON Editor Modal
   document.querySelectorAll(".open-json-editor").forEach(btn => {
     btn.addEventListener("click", () => {
       const targetId = btn.getAttribute("data-target");
       activeTextarea = document.getElementById(targetId);
 
-      if (!cm) {
-        cm = CodeMirror.fromTextArea(document.getElementById("jsonEditorTextarea"), {
-          mode: { name: "javascript", json: true },
-          lineNumbers: true,
-          tabSize: 2,
-          theme: getPreferredTheme(),
-          autoCloseBrackets: true,
-        });
-        cm.setSize("100%", "70vh");
+      initCodeMirror();
 
-        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
-          cm.setOption("theme", e.matches ? "dracula" : "eclipse");
-        });
+      // Sync theme
+      cm.setOption("theme", getTheme());
 
-        attachLiveValidation();
-      } else {
-        cm.setOption("theme", getPreferredTheme());
-      }
-
+      // Load content
       let content = activeTextarea.value.trim();
       try {
         const parsed = JSON.parse(content);
@@ -343,13 +319,14 @@ document.addEventListener("DOMContentLoaded", function() {
       cm.setValue(content);
       errorDiv.textContent = "";
       saveBtn.disabled = false;
+
       modal.show();
       setTimeout(() => cm.refresh(), 200);
       checkEditorJSON();
     });
   });
 
-  // Save button: commit JSON back to textarea + revalidate inline
+  // Save from JSON Editor
   saveBtn.addEventListener("click", () => {
     if (!checkEditorJSON()) return;
     const formatted = JSON.stringify(JSON.parse(cm.getValue()), null, 2);
@@ -362,6 +339,12 @@ document.addEventListener("DOMContentLoaded", function() {
     modal.hide();
   });
 
+  // Observe theme changes from global toggle (in base.html)
+  const observer = new MutationObserver(() => {
+    if (cm) cm.setOption("theme", getTheme());
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-bs-theme"] });
+
   // Prevent invalid submission
   document.querySelector("form").addEventListener("submit", e => {
     const sValid = validateJSON(serviceInput, serviceError);
@@ -373,8 +356,6 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
-
-
 
 
 {% endblock %}
