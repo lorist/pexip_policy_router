@@ -61,6 +61,9 @@
         <div class="mt-2" id="service-override-container">
           {{ form.override_service_response.label_tag }}
           {{ form.override_service_response }}
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-2 open-json-editor" data-target="id_override_service_response">
+            Open JSON Editor
+          </button>
           <div class="form-text">Custom JSON response if "Custom response" is enabled.</div>
         </div>
       </div>
@@ -84,6 +87,10 @@
         <div class="mt-2" id="participant-override-container">
           {{ form.override_participant_response.label_tag }}
           {{ form.override_participant_response }}
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-2 open-json-editor" data-target="id_override_participant_response">
+            Open JSON Editor
+          </button>
+
           <div class="form-text">Custom JSON response if "Custom response" is enabled.</div>
         </div>
       </div>
@@ -127,6 +134,25 @@
       </div>
     </div>
   </div>
+  <!-- JSON Editor Modal -->
+  <div class="modal fade" id="jsonEditorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit JSON Response</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <textarea id="jsonEditorTextarea" class="form-control" rows="15" style="font-family: monospace;"></textarea>
+          <div id="jsonEditorError" class="invalid-feedback d-block mt-2"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="saveJsonEditorBtn">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Actions -->
   <div class="mt-3">
@@ -146,7 +172,6 @@ document.addEventListener("DOMContentLoaded", function() {
   const participantContainer = document.getElementById("participant-override-container");
   const participantInput = document.getElementById("id_override_participant_response");
 
-  // Inline error elements
   const serviceError = document.createElement("div");
   serviceError.className = "invalid-feedback";
   serviceInput.insertAdjacentElement("afterend", serviceError);
@@ -156,26 +181,22 @@ document.addEventListener("DOMContentLoaded", function() {
   participantInput.insertAdjacentElement("afterend", participantError);
 
   // -------------------------------
-  // Pretty-print JSON on load (edit mode)
+  // Pretty-print JSON on page load
   // -------------------------------
   function prettyPrintOnLoad(input) {
     if (!input || !input.value.trim()) return;
     try {
       const parsed = JSON.parse(input.value);
       input.value = JSON.stringify(parsed, null, 2);
-    } catch {
-      // leave invalid content alone
-    }
+    } catch {}
   }
-
   prettyPrintOnLoad(serviceInput);
   prettyPrintOnLoad(participantInput);
 
   // -------------------------------
-  // Visibility + validation helpers
+  // Toggle visibility + default JSON
   // -------------------------------
   function toggleVisibility(toggle, container, input) {
-    if (!toggle || !container || !input) return;
     if (toggle.checked) {
       container.style.display = "block";
       if (!input.value.trim()) {
@@ -188,6 +209,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
+  // -------------------------------
+  // JSON validation
+  // -------------------------------
   function validateJSON(input, errorDiv) {
     const value = input.value.trim();
     if (!value) {
@@ -197,44 +221,27 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     try {
       JSON.parse(value);
-      input.classList.remove("is-invalid");
       input.classList.add("is-valid");
+      input.classList.remove("is-invalid");
       errorDiv.textContent = "";
       return true;
-    } catch {
-      input.classList.remove("is-valid");
+    } catch (e) {
       input.classList.add("is-invalid");
-      errorDiv.textContent = "Invalid JSON format. Please correct before saving.";
+      input.classList.remove("is-valid");
+      errorDiv.textContent = "Invalid JSON format.";
       return false;
     }
   }
 
-  function prettyPrintJSON(input, errorDiv) {
-    const value = input.value.trim();
-    if (!value) return;
-    try {
-      const parsed = JSON.parse(value);
-      input.value = JSON.stringify(parsed, null, 2);
-      input.classList.add("is-valid");
-      errorDiv.textContent = "";
-    } catch {
-      // ignore
-    }
-  }
-
-  // Live validation + auto-format
+  // Live validation
   [serviceInput, participantInput].forEach(input => {
     input.addEventListener("input", () => {
-      const err = input === serviceInput ? serviceError : participantError;
-      validateJSON(input, err);
-    });
-    input.addEventListener("blur", () => {
-      const err = input === serviceInput ? serviceError : participantError;
-      if (validateJSON(input, err)) prettyPrintJSON(input, err);
+      const errorDiv = input === serviceInput ? serviceError : participantError;
+      validateJSON(input, errorDiv);
     });
   });
 
-  // Toggle visibility
+  // Toggle logic
   serviceToggle.addEventListener("change", () =>
     toggleVisibility(serviceToggle, serviceContainer, serviceInput)
   );
@@ -242,11 +249,62 @@ document.addEventListener("DOMContentLoaded", function() {
     toggleVisibility(participantToggle, participantContainer, participantInput)
   );
 
-  // Initialize
   toggleVisibility(serviceToggle, serviceContainer, serviceInput);
   toggleVisibility(participantToggle, participantContainer, participantInput);
 
-  // Block invalid submission
+  // -------------------------------
+  // JSON Editor Modal logic
+  // -------------------------------
+  let activeTextarea = null;
+  const modal = new bootstrap.Modal(document.getElementById("jsonEditorModal"));
+  const editor = document.getElementById("jsonEditorTextarea");
+  const errorDiv = document.getElementById("jsonEditorError");
+
+  document.querySelectorAll(".open-json-editor").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-target");
+      activeTextarea = document.getElementById(targetId);
+      editor.value = activeTextarea.value.trim();
+      try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+        errorDiv.textContent = "";
+      } catch {
+        // leave as-is if invalid
+      }
+      modal.show();
+    });
+  });
+
+  editor.addEventListener("input", () => {
+    try {
+      JSON.parse(editor.value);
+      editor.classList.add("is-valid");
+      editor.classList.remove("is-invalid");
+      errorDiv.textContent = "";
+    } catch {
+      editor.classList.remove("is-valid");
+      editor.classList.add("is-invalid");
+      errorDiv.textContent = "Invalid JSON format.";
+    }
+  });
+
+  document.getElementById("saveJsonEditorBtn").addEventListener("click", () => {
+    try {
+      const parsed = JSON.parse(editor.value);
+      const formatted = JSON.stringify(parsed, null, 2);
+      activeTextarea.value = formatted;
+      activeTextarea.classList.add("is-valid");
+      modal.hide();
+    } catch {
+      editor.classList.add("is-invalid");
+      errorDiv.textContent = "Invalid JSON — cannot save.";
+    }
+  });
+
+  // -------------------------------
+  // Prevent invalid submission
+  // -------------------------------
   document.querySelector("form").addEventListener("submit", function(e) {
     const sValid = validateJSON(serviceInput, serviceError);
     const pValid = validateJSON(participantInput, participantError);
@@ -257,8 +315,6 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
-
-
 
 
 {% endblock %}
