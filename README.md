@@ -98,7 +98,7 @@ Dependencies are listed in `requirements.txt`.
 
     ```bash
     python manage.py makemigrations policy_router
-    python manage migrate
+    python manage.py migrate
 
 4. Create superuser (optional):
 
