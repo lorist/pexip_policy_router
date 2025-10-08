@@ -25,6 +25,8 @@ Runs commands after build
 
 SCM_DO_BUILD_DURING_DEPLOYMENT : True
 
+DISABLE_COLLECTSTATIC :  False
+
 POST_BUILD_COMMAND : scripts/postbuild.sh
 
 ## Django specic App Settings - access via os.environ['VARNAME']
@@ -37,4 +39,4 @@ ALLOWED_HOSTS - Can use [os.environ['WEBSITE_HOSTNAME']] in settings.py to use A
 
 DATABASES - can be used for database connection in a production enviroment
 
-N.B. Django files such as settings.py should be configured to access these via access via "os.environ['VARNAME']"
+N.B. Django files such as settings.py should be configured to access these via "os.environ['VARNAME']"
