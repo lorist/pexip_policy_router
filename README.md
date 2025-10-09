@@ -110,6 +110,8 @@ Dependencies are listed in `requirements.txt`.
     ```bash
     python manage.py runserver 10.0.0.10:8000
 
+    "J.T. Discuss: I don't need to specify IP and ALLOWED_HOSTS = [] works OK for http://127.0.0.1:8000/"
+
 ##  Usage
 
 - Rules UI: Visit http://10.0.0.10:8000/rules/ to create, edit, and delete rules.
@@ -129,3 +131,7 @@ As this is a POC, you can add log rotation to a crod job or run manually. Proper
 
     ```bash
     python manage.py rotate_logs --days=30
+
+### Deploy to Azure WebApp - Linux
+  See DeployAzureWebApp.md
+
