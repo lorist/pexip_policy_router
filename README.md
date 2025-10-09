@@ -98,7 +98,7 @@ Dependencies are listed in `requirements.txt`.
 
     ```bash
     python manage.py makemigrations policy_router
-    python manage migrate
+    python manage.py migrate
 
 4. Create superuser (optional):
 
@@ -108,12 +108,12 @@ Dependencies are listed in `requirements.txt`.
 5. Start the development server:
 
     ```bash
-    python manage.py runserver 10.0.0.10:8000
+    python manage.py runserver 0.0.0.0:8000
 
 ##  Usage
 
-- Rules UI: Visit http://10.0.0.10:8000/rules/ to create, edit, and delete rules.
-- Logs UI: Visit http://10.0.0.10:8000/logs/ to search and view request logs.
+- Rules UI: Visit http://localhost:8000/rules/ to create, edit, and delete rules.
+- Logs UI: Visit http://localhost:8000/logs/ to search and view request logs.
 
 ### Example Rule
 
@@ -129,3 +129,7 @@ As this is a POC, you can add log rotation to a crod job or run manually. Proper
 
     ```bash
     python manage.py rotate_logs --days=30
+
+### Deploy to Azure WebApp - Linux
+  See DeployAzureWebApp.md
+

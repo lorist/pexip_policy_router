@@ -11,6 +11,8 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'policy_router.settings')
+# Detects if 'WEBSITE_HOSTNAME' existis in ENV to use settings_AzureWebApp.py, else use standard settings.py
+settings_module = 'pexip_policy_router.settings_AzureWebApp' if 'WEBSITE_HOSTNAME' in os.environ else 'pexip_policy_router.settings'
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
 
 application = get_wsgi_application()
