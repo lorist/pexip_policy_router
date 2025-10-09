@@ -3,7 +3,7 @@
 REF: https://learn.microsoft.com/en-us/azure/app-service/configure-language-python
 
 ## Key concepts
-Azure WebApp will make use of "app settings" on build, effectively ENV variables
+Azure WebApp will make use of "app settings" ENV variableson build
 
 SCM_DO_BUILD_DURING_DEPLOYMENT
 
@@ -35,8 +35,8 @@ SECRET_KEY - Can be used as Django Secret key
 
 DEBUG - set to false in production
 
-ALLOWED_HOSTS - Can use [os.environ['WEBSITE_HOSTNAME']] in settings.py to use Azure WebApp hostname
+ALLOWED_HOSTS -  Use [os.environ['WEBSITE_HOSTNAME']] in settings.py to use Azure WebApp hostname
 
-DATABASES - can be used for database connection in a production enviroment
+DATABASES - can be used for database connection in a production enviroment - possible future use
 
-N.B. Django files such as settings.py should be configured to access these via "os.environ['VARNAME']"
+N.B. Django files such as settings.py should be configured to access these via "os.environ['VARNAME']" & requires "import os"
