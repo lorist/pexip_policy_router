@@ -16,7 +16,9 @@ from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
-
+import base64
+from django.contrib.auth import authenticate
+from django.http import HttpResponse
 
 # -----------------------------
 # Helpers
@@ -33,6 +35,39 @@ def maybe_protected(view_func):
     if settings.ENABLE_WEB_AUTH:
         return login_required(view_func)
     return view_func
+
+def maybe_basic_auth_protected(view_func):
+    """Enforce HTTP Basic Auth on policy endpoints if enabled."""
+    from functools import wraps
+
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "ENABLE_POLICY_AUTH", False):
+            return view_func(request, *args, **kwargs)
+
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        if not auth_header or not auth_header.lower().startswith("basic "):
+            response = HttpResponse("Unauthorized", status=401)
+            response["WWW-Authenticate"] = 'Basic realm="Policy API"'
+            return response
+
+        try:
+            encoded = auth_header.split(" ")[1]
+            decoded = base64.b64decode(encoded).decode("utf-8")
+            username, password = decoded.split(":", 1)
+        except Exception:
+            return HttpResponse("Invalid authentication header", status=400)
+
+        user = authenticate(username=username, password=password)
+        if user is None:
+            response = HttpResponse("Invalid credentials", status=401)
+            response["WWW-Authenticate"] = 'Basic realm="Policy API"'
+            return response
+
+        request.user = user
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
 
 def _log_request(rule, request, response=None, is_override=False, override_response=None):
     """Save request/response info to DB."""
@@ -156,7 +191,8 @@ def rule_tester(request):
 # -----------------------------
 # Proxy Views
 # -----------------------------
-@maybe_protected
+@csrf_exempt
+@maybe_basic_auth_protected
 def proxy_service_policy(request):
     """Proxy for /policy/v1/service/configuration (always GET)."""
     if request.method != "GET":
@@ -209,7 +245,8 @@ def proxy_service_policy(request):
 
     return JsonResponse({"error": "No matching rule"}, status=404)
 
-@maybe_protected
+@csrf_exempt
+@maybe_basic_auth_protected
 def proxy_participant_policy(request):
     """Proxy for /policy/v1/participant/properties (always GET)."""
     if request.method != "GET":

@@ -104,7 +104,15 @@
   <nav class="navbar navbar-expand-lg bg-body-tertiary fixed-top border-bottom">
     <div class="container-fluid">
       <a class="navbar-brand" href="{% url 'policy_router:log_list' %}">Policy Router</a>
-      <div class="collapse navbar-collapse">
+
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+              data-bs-target="#navbarNav" aria-controls="navbarNav"
+              aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <!-- Left-aligned items -->
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           <li class="nav-item">
             <a class="nav-link" href="{% url 'policy_router:log_list' %}">Logs</a>
@@ -115,31 +123,50 @@
           <li class="nav-item">
             <a class="nav-link" href="{% url 'policy_router:rule_tester' %}">Rule Tester</a>
           </li>
+        </ul>
+
+        <!-- Right-aligned items -->
+        <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
           {% if settings.ENABLE_WEB_AUTH %}
             {% if request.user.is_authenticated %}
+              <li class="nav-item d-flex align-items-center">
+                <span class="nav-link disabled text-secondary">
+                  <i class="bi bi-person-circle me-1"></i>
+                  Welcome, {{ request.user.username }}
+                </span>
+              </li>
               <li class="nav-item">
-                <form action="{% url 'logout' %}" method="post" style="display:inline;">
+                <form action="{% url 'logout' %}" method="post" class="d-inline">
                   {% csrf_token %}
-                  <button type="submit" class="btn btn-link nav-link" style="display:inline; border:none; background:none; padding:0;">
-                    Logout
+                  <button
+                    type="submit"
+                    class="nav-link btn btn-link p-0 ms-2 align-baseline"
+                    style="text-decoration: none;"
+                  >
+                    <i class="bi bi-box-arrow-right"></i> Logout
                   </button>
                 </form>
               </li>
             {% else %}
               <li class="nav-item">
-                <a class="nav-link" href="{% url 'login' %}?next={{ request.path }}">Login</a>
+                <a class="nav-link" href="{% url 'login' %}?next={{ request.path }}">
+                  <i class="bi bi-box-arrow-in-right"></i> Login
+                </a>
               </li>
             {% endif %}
           {% endif %}
+
+          <!-- Theme toggle button -->
+          <li class="nav-item">
+            <button id="theme-toggle" class="btn btn-outline-secondary btn-sm ms-3" title="Toggle light/dark mode">
+              <i id="theme-icon" class="bi bi-moon-fill"></i>
+            </button>
+          </li>
         </ul>
       </div>
-
-      <!-- 🌗 Theme toggle button -->
-      <button id="theme-toggle" class="btn btn-outline-secondary btn-sm" title="Toggle light/dark mode">
-        <i id="theme-icon" class="bi bi-moon-fill"></i>
-      </button>
     </div>
   </nav>
+
 
 
   <div class="container">
