@@ -10,4 +10,3 @@ CSRF_TRUSTED_ORIGINS = ['https://'+ os.environ['WEBSITE_HOSTNAME']]
 # Other settings.py overides for production
 DEBUG = False
 SECRET_KEY = [os.environ['SECRET_KEY']]
-
