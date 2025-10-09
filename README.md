@@ -108,14 +108,12 @@ Dependencies are listed in `requirements.txt`.
 5. Start the development server:
 
     ```bash
-    python manage.py runserver 10.0.0.10:8000
-
-    "J.T. Discuss: I don't need to specify IP and ALLOWED_HOSTS = [] works OK for http://127.0.0.1:8000/"
+    python manage.py runserver 0.0.0.0:8000
 
 ##  Usage
 
-- Rules UI: Visit http://10.0.0.10:8000/rules/ to create, edit, and delete rules.
-- Logs UI: Visit http://10.0.0.10:8000/logs/ to search and view request logs.
+- Rules UI: Visit http://localhost:8000/rules/ to create, edit, and delete rules.
+- Logs UI: Visit http://localhost:8000/logs/ to search and view request logs.
 
 ### Example Rule
 
