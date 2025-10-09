@@ -133,3 +133,13 @@ As this is a POC, you can add log rotation to a crod job or run manually. Proper
 ### Deploy to Azure WebApp - Linux
   See DeployAzureWebApp.md
 
+### Authentication
+
+The application is configured to use the superuser credentials configured in step 4. The policy endpoints also use these credentials, so add them to the configration of the external policy server in the Infinity policy profile.
+
+To disable or enable authentication for the app, adjust the settings in the settings.py file:
+
+    ```bash
+    # Authentication toggles
+    ENABLE_WEB_AUTH = True        # Require login for web views (/rules)
+    ENABLE_POLICY_AUTH = True     # Require Basic Auth for policy endpoints
