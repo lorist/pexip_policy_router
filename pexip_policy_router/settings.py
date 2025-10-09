@@ -1,4 +1,5 @@
 from pathlib import Path
+from django.conf import settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -27,6 +28,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+
+
 ROOT_URLCONF = "pexip_policy_router.urls"
 
 TEMPLATES = [
@@ -40,6 +43,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                'django.template.context_processors.static',
+                'policy_router.context_processors.app_settings',
             ],
         },
     }
@@ -55,9 +60,17 @@ DATABASES = {
 }
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+TIME_ZONE = "Australia/Sydney"
 USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/rules'
+LOGOUT_REDIRECT_URL = '/login/'
+
+# Authentication toggles
+ENABLE_WEB_AUTH = True        # Require login for web views (/rules)
+ENABLE_POLICY_AUTH = True     # Require Basic Auth for policy endpoints

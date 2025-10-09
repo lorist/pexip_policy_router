@@ -1,4 +1,5 @@
 from django.urls import path
+from django.contrib.auth import views as auth_views
 from . import views
 
 app_name = "policy_router"
@@ -25,4 +26,8 @@ urlpatterns = [
 
     # Logs
     path("logs/", views.log_list, name="log_list"),
+
+    # Auth
+    path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
+    path("logout/", auth_views.LogoutView.as_view(next_page="/login/"), name="logout"),
 ]

@@ -2,8 +2,10 @@ import re
 import httpx
 import json
 from datetime import datetime
+from django.conf import settings
 from django.http import JsonResponse, HttpResponseNotAllowed
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404, render
+from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
 from django.contrib import messages
@@ -12,7 +14,11 @@ from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
-
+from django.views.decorators.csrf import csrf_exempt
+from policy_router.auth import basic_auth_django_user
+import base64
+from django.contrib.auth import authenticate
+from django.http import HttpResponse
 
 # -----------------------------
 # Helpers
@@ -25,6 +31,43 @@ def _build_safe_headers(request):
         if k.lower() not in {"host", "connection", "content-length", "accept-encoding"}
     }
 
+def maybe_protected(view_func):
+    if settings.ENABLE_WEB_AUTH:
+        return login_required(view_func)
+    return view_func
+
+def maybe_basic_auth_protected(view_func):
+    """Enforce HTTP Basic Auth on policy endpoints if enabled."""
+    from functools import wraps
+
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, "ENABLE_POLICY_AUTH", False):
+            return view_func(request, *args, **kwargs)
+
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        if not auth_header or not auth_header.lower().startswith("basic "):
+            response = HttpResponse("Unauthorized", status=401)
+            response["WWW-Authenticate"] = 'Basic realm="Policy API"'
+            return response
+
+        try:
+            encoded = auth_header.split(" ")[1]
+            decoded = base64.b64decode(encoded).decode("utf-8")
+            username, password = decoded.split(":", 1)
+        except Exception:
+            return HttpResponse("Invalid authentication header", status=400)
+
+        user = authenticate(username=username, password=password)
+        if user is None:
+            response = HttpResponse("Invalid credentials", status=401)
+            response["WWW-Authenticate"] = 'Basic realm="Policy API"'
+            return response
+
+        request.user = user
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
 
 def _log_request(rule, request, response=None, is_override=False, override_response=None):
     """Save request/response info to DB."""
@@ -47,7 +90,7 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
     # -----------------------------
     # Rule Tester
     # -----------------------------
-
+@maybe_protected
 @require_http_methods(["GET", "POST"])
 def rule_tester(request):
     result = None
@@ -148,6 +191,8 @@ def rule_tester(request):
 # -----------------------------
 # Proxy Views
 # -----------------------------
+@csrf_exempt
+@maybe_basic_auth_protected
 def proxy_service_policy(request):
     """Proxy for /policy/v1/service/configuration (always GET)."""
     if request.method != "GET":
@@ -200,8 +245,8 @@ def proxy_service_policy(request):
 
     return JsonResponse({"error": "No matching rule"}, status=404)
 
-
-
+@csrf_exempt
+@maybe_basic_auth_protected
 def proxy_participant_policy(request):
     """Proxy for /policy/v1/participant/properties (always GET)."""
     if request.method != "GET":
@@ -260,6 +305,7 @@ def proxy_participant_policy(request):
 # -----------------------------
 # Rules Management
 # -----------------------------
+@maybe_protected
 def rule_list(request):
     rules = PolicyProxyRule.objects.all().order_by("priority", "-updated_at")
 
@@ -289,7 +335,7 @@ def rule_list(request):
     })
 
 
-
+@maybe_protected
 def rule_create(request):
     if request.method == "POST":
         form = PolicyProxyRuleForm(request.POST)
@@ -301,7 +347,7 @@ def rule_create(request):
         form = PolicyProxyRuleForm()
     return render(request, "policy_router/rule_form.html", {"form": form})
 
-
+@maybe_protected
 def rule_edit(request, pk):
     rule = get_object_or_404(PolicyProxyRule, pk=pk)
     if request.method == "POST":
@@ -314,7 +360,7 @@ def rule_edit(request, pk):
         form = PolicyProxyRuleForm(instance=rule)
     return render(request, "policy_router/rule_form.html", {"form": form})
 
-
+@maybe_protected
 def rule_delete(request, pk):
     rule = get_object_or_404(PolicyProxyRule, pk=pk)
     if request.method == "POST":
@@ -327,6 +373,7 @@ def rule_delete(request, pk):
 # -----------------------------
 # Logs
 # -----------------------------
+@maybe_protected
 def log_list(request):
     logs = PolicyRequestLog.objects.select_related("rule").order_by("-created_at")
 
