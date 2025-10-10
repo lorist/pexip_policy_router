@@ -97,6 +97,13 @@
       border: 1px solid #444;
     }
 
+    .table .btn-sm {
+      min-width: 90px;
+      font-size: 0.85rem;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
   </style>
 </head>
 <body>
@@ -172,8 +179,6 @@
     </div>
   </nav>
 
-
-
   <div class="container">
     {% block content %}{% endblock %}
   </div>
@@ -198,6 +203,7 @@
     });
   });
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 
 </body>
 </html>

@@ -45,10 +45,17 @@
   </div>
 </div>
 
-<!-- Add Rule -->
-<div class="mb-3">
-  <a href="{% url 'policy_router:rule_create' %}" class="btn btn-success">
+<!-- Add + Search -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <a href="{% url 'policy_router:rule_create' %}" class="btn btn-success btn-sm">
     <i class="bi bi-plus-circle"></i> Add Rule
+  </a>
+  <input type="text" id="ruleSearch" class="form-control form-control-sm" placeholder="🔍 Search rules..." style="width: 250px;">
+</div>
+
+<div class="mb-3 text-end">
+  <a href="{% url 'policy_router:rule_resequence' %}" class="btn btn-outline-secondary btn-sm">
+    🔄 Resequence Priorities
   </a>
 </div>
 
@@ -59,6 +66,7 @@
       <table class="table table-hover table-bordered table-striped align-middle mb-0">
         <thead class="table-dark">
           <tr>
+            <th style="width: 2rem;"></th>
             <th>Name</th>
             <th>Regex</th>
             <th>Priority</th>
@@ -71,9 +79,17 @@
             <th class="text-center">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="rules-table-body">
           {% for rule in rules %}
-          <tr>
+          <tr data-id="{{ rule.id }}"
+              data-name="{{ rule.name|lower }}"
+              data-regex="{{ rule.regex|lower }}"
+              data-service="{{ rule.service_target_url|default_if_none:''|lower }}"
+              data-participant="{{ rule.participant_target_url|default_if_none:''|lower }}"
+              style="cursor: grab;">
+            <td class="text-muted text-center align-middle">
+              <i class="bi bi-grip-vertical"></i>
+            </td>
             <td><strong>{{ rule.name }}</strong></td>
             <td><code>{{ rule.regex }}</code></td>
             <td>{{ rule.priority }}</td>
@@ -117,18 +133,23 @@
               {% endif %}
             </td>
             <td>{{ rule.updated_at|date:"Y-m-d H:i" }}</td>
-            <td class="text-center">
-              <a href="{% url 'policy_router:rule_edit' rule.id %}" class="btn btn-sm btn-outline-primary me-1">
-                <i class="bi bi-pencil-square"></i> Edit
-              </a>
-              <a href="{% url 'policy_router:rule_delete' rule.id %}" class="btn btn-sm btn-outline-danger">
-                <i class="bi bi-trash"></i> Delete
-              </a>
+            <td class="text-end align-middle">
+              <div class="d-flex flex-wrap justify-content-end gap-2">
+                <a href="{% url 'policy_router:rule_edit' rule.pk %}" class="btn btn-primary btn-sm flex-fill text-nowrap">
+                  <i class="bi bi-pencil"></i> Edit
+                </a>
+                <a href="{% url 'policy_router:rule_duplicate' rule.pk %}" class="btn btn-outline-secondary btn-sm flex-fill text-nowrap">
+                  <i class="bi bi-files"></i> Duplicate
+                </a>
+                <a href="{% url 'policy_router:rule_delete' rule.pk %}" class="btn btn-danger btn-sm flex-fill text-nowrap">
+                  <i class="bi bi-trash"></i> Delete
+                </a>
+              </div>
             </td>
           </tr>
           {% empty %}
           <tr>
-            <td colspan="10" class="text-center text-muted py-3">No rules found.</td>
+            <td colspan="11" class="text-center text-muted py-3">No rules found.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -136,5 +157,91 @@
     </div>
   </div>
 </div>
+
+<!-- Pagination -->
+<div id="pagination" class="mt-3 text-center"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const tbody = document.getElementById("rules-table-body");
+  const rows = Array.from(tbody.querySelectorAll("tr[data-id]"));
+  const searchInput = document.getElementById("ruleSearch");
+  const pagination = document.getElementById("pagination");
+  const pageSize = 10;
+  let currentPage = parseInt(localStorage.getItem("rulesPage") || "1");
+  searchInput.value = localStorage.getItem("rulesSearch") || "";
+
+  // --- Filter logic ---
+  function getFilteredRows() {
+    const q = searchInput.value.toLowerCase();
+    return rows.filter(row =>
+      row.dataset.name.includes(q) ||
+      row.dataset.regex.includes(q) ||
+      row.dataset.service.includes(q) ||
+      row.dataset.participant.includes(q)
+    );
+  }
+
+  function renderPage(filteredRows) {
+    const totalPages = Math.ceil(filteredRows.length / pageSize) || 1;
+    currentPage = Math.min(currentPage, totalPages);
+    localStorage.setItem("rulesPage", currentPage);
+    tbody.innerHTML = "";
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    filteredRows.slice(start, end).forEach(r => tbody.appendChild(r));
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages) {
+    pagination.innerHTML = "";
+    if (totalPages <= 1) return;
+    for (let i = 1; i <= totalPages; i++) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-sm " + (i === currentPage ? "btn-primary" : "btn-outline-secondary");
+      btn.textContent = i;
+      btn.addEventListener("click", () => {
+        currentPage = i;
+        renderPage(getFilteredRows());
+      });
+      pagination.appendChild(btn);
+    }
+  }
+
+  function applySearch() {
+    localStorage.setItem("rulesSearch", searchInput.value);
+    currentPage = 1;
+    renderPage(getFilteredRows());
+  }
+
+  searchInput.addEventListener("input", applySearch);
+  renderPage(getFilteredRows());
+
+  let lastOrder = rows.map(row => row.getAttribute("data-id"));
+  Sortable.create(tbody, {
+    animation: 150,
+    handle: "td:first-child",
+    onEnd: function(evt) {
+      const newOrder = Array.from(tbody.querySelectorAll("tr")).map(r => r.dataset.id);
+      if (JSON.stringify(newOrder) === JSON.stringify(lastOrder)) return;
+      lastOrder = newOrder;
+      fetch("{% url 'policy_router:rule_reorder' %}", {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ order: newOrder })
+      });
+    }
+  });
+});
+</script>
+
+<style>
+#rules-table-body tr { transition: all 0.2s ease-in-out; }
+.sortable-chosen { background-color: #fff3cd !important; opacity: 0.95; }
+.sortable-ghost { background-color: #e2e3e5 !important; opacity: 0.7; }
+</style>
 
 {% endblock %}
