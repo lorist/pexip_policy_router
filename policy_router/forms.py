@@ -2,6 +2,7 @@ import json
 from django import forms
 from .models import PolicyProxyRule
 
+
 class CSVImportForm(forms.Form):
     csv_file = forms.FileField(label="Select CSV file")
 
@@ -20,6 +21,7 @@ class PolicyProxyRuleForm(forms.ModelForm):
         widget=forms.SelectMultiple(attrs={"class": "form-select"}),
         help_text="Leave empty to match any call direction."
     )
+
     class Meta:
         model = PolicyProxyRule
         fields = [
@@ -55,28 +57,36 @@ class PolicyProxyRuleForm(forms.ModelForm):
             ),
         }
 
-    def clean_protocols(self):
-        """Ensure a list is always stored, not JSON string."""
-        return self.cleaned_data.get("protocols", [])
-
-    def clean_call_directions(self):
-        """Ensure a list is always stored, not JSON string."""
-        return self.cleaned_data.get("call_directions", [])
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Set initial values from the instance (JSONField stores list)
-        if isinstance(self.instance.protocols, list):
-            self.initial["protocols"] = self.instance.protocols
-        if isinstance(self.instance.call_directions, list):
-            self.initial["call_directions"] = self.instance.call_directions
+        self.fields["protocols"].required = False
+        self.fields["call_directions"].required = False
 
-        # Default JSON responses if toggles are active but empty
+        # Normalize JSONField values (None → [])
+        self.initial["protocols"] = list(self.instance.protocols or [])
+        self.initial["call_directions"] = list(self.instance.call_directions or [])
+
+        # Default JSON responses for toggles
         if self.instance.always_continue_service and not self.instance.override_service_response:
             self.initial["override_service_response"] = '{"status": "success", "action": "continue"}'
         if self.instance.always_continue_participant and not self.instance.override_participant_response:
             self.initial["override_participant_response"] = '{"status": "success", "action": "continue"}'
+
+    def full_clean(self):
+        """Handle case where all items are deselected (no key in POST)."""
+        data = self.data.copy()
+        for field_name in ["protocols", "call_directions"]:
+            if field_name not in data:
+                data.setlist(field_name, [])
+        self.data = data
+        super().full_clean()
+
+    def clean_protocols(self):
+        return self.cleaned_data.get("protocols") or []
+
+    def clean_call_directions(self):
+        return self.cleaned_data.get("call_directions") or []
 
     def clean_override_service_response(self):
         data = self.cleaned_data.get("override_service_response")
