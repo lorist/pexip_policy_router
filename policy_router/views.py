@@ -1,6 +1,9 @@
 import re
 import httpx
 import json
+import csv
+import io
+import base64
 from datetime import datetime
 from django.conf import settings
 from django.http import JsonResponse, HttpResponseNotAllowed
@@ -16,9 +19,10 @@ from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
-import base64
 from django.contrib.auth import authenticate
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.utils.encoding import smart_str
+
 
 # -----------------------------
 # Helpers
@@ -87,9 +91,88 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
         protocol=request.GET.get("protocol"),
     )
 
-    # -----------------------------
-    # Rule Tester
-    # -----------------------------
+
+# -----------------------------
+# CSV EXPORT
+# -----------------------------
+@maybe_protected
+def manage_rules_view(request):
+    """Render page for managing CSV import/export."""
+    return render(request, "policy_router/manage_rules.html")
+
+@maybe_protected
+@require_http_methods(["GET"])
+def export_rules_csv(request):
+    """Download all PolicyProxyRule entries as a CSV file."""
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = "attachment; filename=policy_rules.csv"
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "name",
+        "regex",
+        "priority",
+        "is_active",
+        "service_target_url",
+        "participant_target_url",
+    ])
+
+    for rule in PolicyProxyRule.objects.all().order_by("priority"):
+        writer.writerow([
+            smart_str(rule.name),
+            smart_str(rule.regex),
+            rule.priority or 0,
+            "True" if rule.is_active else "False",
+            smart_str(rule.service_target_url or ""),
+            smart_str(rule.participant_target_url or ""),
+        ])
+
+    return response
+
+
+# -----------------------------
+# CSV IMPORT
+# -----------------------------
+@csrf_exempt
+@maybe_protected
+@require_http_methods(["POST"])
+def import_rules_csv(request):
+    """Upload a CSV file and import/update PolicyProxyRule entries."""
+    csv_file = request.FILES.get("file")
+    if not csv_file:
+        return JsonResponse({"error": "Missing 'file' in request."}, status=400)
+
+    csv_data = io.TextIOWrapper(csv_file.file, encoding="utf-8")
+    reader = csv.DictReader(csv_data)
+    created, updated = 0, 0
+
+    for row in reader:
+        rule, created_flag = PolicyProxyRule.objects.update_or_create(
+            name=row["name"],
+            defaults={
+                "regex": row.get("regex", ""),
+                "priority": int(row.get("priority", 0)),
+                "is_active": row.get("is_active", "True").lower() in ("true", "1"),
+                "service_target_url": row.get("service_target_url", ""),
+                "participant_target_url": row.get("participant_target_url", ""),
+            },
+        )
+        if created_flag:
+            created += 1
+        else:
+            updated += 1
+
+    return JsonResponse({
+        "message": f"Import complete: {created} created, {updated} updated.",
+        "created": created,
+        "updated": updated,
+    })
+
+
+
+# -----------------------------
+# Rule Tester
+# -----------------------------
 @maybe_protected
 @require_http_methods(["GET", "POST"])
 def rule_tester(request):

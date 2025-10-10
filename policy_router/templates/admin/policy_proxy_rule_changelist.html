@@ -1,0 +1,20 @@
+{% extends "policy_router/base.html" %}
+{% load static %}
+
+{% block object-tools %}
+  <div style="margin-bottom: 1.5em;">
+    <form method="post" enctype="multipart/form-data" style="display:inline;">
+      {% csrf_token %}
+      <label for="csv_file"><strong>Import CSV:</strong></label>
+      {{ csv_import_form.csv_file }}
+      <button type="submit" name="import" class="button" style="margin-left:0.5em;">
+        Upload & Import
+      </button>
+      <span class="help" style="margin-left:1em;">
+        Expected columns:
+        <code>name, regex, priority, is_active, service_target_url, participant_target_url</code>
+      </span>
+    </form>
+  </div>
+  {{ block.super }}
+{% endblock %}
