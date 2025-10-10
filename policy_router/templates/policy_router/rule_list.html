@@ -1,4 +1,5 @@
 {% extends "policy_router/base.html" %}
+{% load static dict_extras %}
 {% block title %}Rules{% endblock %}
 {% block content %}
 
@@ -57,6 +58,9 @@
   <a href="{% url 'policy_router:rule_resequence' %}" class="btn btn-outline-secondary btn-sm">
     🔄 Resequence Priorities
   </a>
+  <a href="{% url 'policy_router:rule_check_duplicates' %}" class="btn btn-outline-warning btn-sm">
+    ⚠️ Check Duplicates
+  </a>
 </div>
 
 <!-- Rules Table -->
@@ -100,7 +104,19 @@
                 <span class="text-muted">Never</span>
               {% endif %}
             </td>
-            <td><strong>{{ rule.name }}</strong></td>
+            <td>
+              <strong>
+                {{ rule.name }}
+                {% if rule.id in duplicate_ids %}
+                  <span
+                    class="badge bg-warning text-dark ms-1"
+                    title="Overlaps with: {{ duplicate_map|get_item:rule.id|join:', ' }}"
+                  >
+                    ⚠️
+                  </span>
+                {% endif %}
+              </strong>
+            </td>
             <td><code>{{ rule.regex }}</code></td>
             <td>{{ rule.priority }}</td>
             <td>

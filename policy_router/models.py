@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 import json
+import re
 
 class PolicyProxyRule(models.Model):
     PROTOCOL_CHOICES = [
@@ -51,7 +52,12 @@ class PolicyProxyRule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
-        """Ensure DB consistency between checkboxes and JSON fields."""
+        """Ensure DB consistency and detect duplicate or overlapping regex patterns."""
+        import re
+        import random
+        from django.core.exceptions import ValidationError
+
+        # --- Keep JSON consistency logic ---
         if not self.always_continue_service:
             self.override_service_response = None
         elif self.override_service_response in (None, "", {}):
@@ -62,8 +68,52 @@ class PolicyProxyRule(models.Model):
         elif self.override_participant_response in (None, "", {}):
             self.override_participant_response = {"status": "success", "action": "continue"}
 
-    def __str__(self):
-        return self.name
+        # --- Validate regex syntax ---
+        try:
+            this_regex = re.compile(self.regex)
+        except re.error as e:
+            raise ValidationError({"regex": f"Invalid regex pattern: {e}"})
+
+        # --- Smarter overlap detection ---
+        overlapping = []
+        # Generate test candidates likely to hit common alias shapes
+        test_samples = [
+            "room-1", "room-12", "room-123", "room-9999",
+            "vmr-01", "vmr-999", "test", "room-", "conference-01",
+        ]
+        # Add some random variations to broaden matching
+        for i in range(10):
+            test_samples.append(f"room-{random.randint(0,9999)}")
+            test_samples.append(f"vmr-{random.randint(0,9999)}")
+
+        for other in type(self).objects.exclude(pk=self.pk).filter(is_active=True):
+            try:
+                other_regex = re.compile(other.regex)
+            except re.error:
+                continue
+
+            # Skip exact duplicates
+            if other.regex == self.regex:
+                overlapping.append(other.name)
+                continue
+
+            # Check if both regexes match any of the same samples
+            for sample in test_samples:
+                if this_regex.search(sample) and other_regex.search(sample):
+                    overlapping.append(other.name)
+                    break
+
+        if overlapping:
+            raise ValidationError({
+                "regex": (
+                    f"This pattern may overlap or duplicate existing rule(s): "
+                    f"{', '.join(set(overlapping))}"
+                )
+            })
+
+
+        def __str__(self):
+            return self.name
 
 
 

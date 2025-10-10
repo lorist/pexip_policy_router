@@ -4,6 +4,7 @@ import json
 import csv
 import io
 import base64
+from collections import defaultdict
 from datetime import datetime
 from django.conf import settings
 from django.http import JsonResponse, HttpResponseNotAllowed
@@ -403,6 +404,12 @@ def proxy_participant_policy(request):
 # -----------------------------
 @maybe_protected
 def rule_list(request):
+    import re
+    from collections import defaultdict
+    import random
+    from django.db.models import Q
+
+    # --- Base queryset + filters ---
     rules = PolicyProxyRule.objects.all().order_by("priority", "id")
 
     protocols = request.GET.getlist("protocols")
@@ -420,6 +427,56 @@ def rule_list(request):
             q |= Q(call_directions__icontains=cd)
         rules = rules.filter(q)
 
+    rules = list(rules)
+
+    # --- Improved Semantic Duplicate Detection ---
+    base_samples = [
+        "room-01", "room-12", "room-99", "room-100", "vmr-01", "vmr-22", "conference-07",
+        "judge-1", "guest-88", "chair-02", "defence-07", "teams-123", "mssip-321",
+        "api-test", "webrtc-session", "sip-user", "h323-alias", "rtmp-stream",
+        "health-55", "justice-42", "courtroom-3", "court-12",
+    ]
+    # Add some randomized samples for extra coverage
+    for i in range(10):
+        base_samples.append(f"room-{random.randint(0,9999)}")
+        base_samples.append(f"vmr-{random.randint(0,9999)}")
+
+    duplicate_ids = set()
+    duplicate_map = defaultdict(list)
+
+    for i, r1 in enumerate(rules):
+        try:
+            regex1 = re.compile(r1.regex)
+        except re.error:
+            continue
+
+        for r2 in rules[i + 1:]:
+            try:
+                regex2 = re.compile(r2.regex)
+            except re.error:
+                continue
+
+            # Exact duplicate
+            if r1.regex.strip() == r2.regex.strip():
+                duplicate_ids.update([r1.id, r2.id])
+                duplicate_map[r1.id].append(f"{r2.name} (identical)")
+                duplicate_map[r2.id].append(f"{r1.name} (identical)")
+                continue
+
+            # Sample-based overlap test
+            overlap_samples = [s for s in base_samples if regex1.search(s) and regex2.search(s)]
+
+            # Only flag if more than 2 overlapping samples
+            if len(overlap_samples) >= 3:
+                duplicate_ids.update([r1.id, r2.id])
+                overlap_preview = ", ".join(overlap_samples[:3])
+                duplicate_map[r1.id].append(
+                    f"{r2.name} (matches: {overlap_preview}{'…' if len(overlap_samples) > 3 else ''})"
+                )
+                duplicate_map[r2.id].append(
+                    f"{r1.name} (matches: {overlap_preview}{'…' if len(overlap_samples) > 3 else ''})"
+                )
+
     return render(request, "policy_router/rule_list.html", {
         "rules": rules,
         "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
@@ -427,7 +484,9 @@ def rule_list(request):
         "filters": {
             "protocols": protocols,
             "call_directions": call_directions,
-        }
+        },
+        "duplicate_ids": duplicate_ids,
+        "duplicate_map": duplicate_map,
     })
 
 
@@ -543,6 +602,54 @@ def rule_reorder(request):
         return JsonResponse({"status": "ok", "refresh": True})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    
+@maybe_protected
+def rule_check_duplicates(request):
+    """Scan all active rules for overlapping regex patterns (semantic check)."""
+    import re
+    import random
+
+    rules = list(PolicyProxyRule.objects.filter(is_active=True))
+    duplicates = []
+
+    # Common alias shapes likely to occur in Pexip
+    base_samples = [
+        "room-1", "room-12", "room-123", "room-9999",
+        "vmr-01", "vmr-999", "test", "room-", "conference-01",
+        "chair-1", "defence-99", "guest-1234",
+    ]
+    # Add random variations for diversity
+    for i in range(20):
+        base_samples.append(f"room-{random.randint(0,9999)}")
+        base_samples.append(f"vmr-{random.randint(0,9999)}")
+
+    for i, r1 in enumerate(rules):
+        try:
+            regex1 = re.compile(r1.regex)
+        except re.error:
+            continue
+
+        for r2 in rules[i + 1:]:
+            try:
+                regex2 = re.compile(r2.regex)
+            except re.error:
+                continue
+
+            # Skip exact duplicates
+            if r1.regex == r2.regex:
+                duplicates.append((r1, r2, "Exact duplicate"))
+                continue
+
+            # Check semantic overlap — any string matching both
+            for sample in base_samples:
+                if regex1.search(sample) and regex2.search(sample):
+                    duplicates.append((r1, r2, f"Both match '{sample}'"))
+                    break
+
+    return render(request, "policy_router/rule_duplicates.html", {
+        "duplicates": duplicates,
+    })
+
 # -----------------------------
 # Logs
 # -----------------------------
