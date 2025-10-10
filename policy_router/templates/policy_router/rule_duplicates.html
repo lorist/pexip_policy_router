@@ -1,0 +1,42 @@
+{% extends "policy_router/base.html" %}
+{% block title %}Duplicate Rule Check{% endblock %}
+{% block content %}
+<h2 class="mb-4">Duplicate Rule Diagnostics</h2>
+
+{% if duplicates %}
+  <div class="alert alert-warning">
+    <strong>⚠️ Potential overlaps found:</strong>
+  </div>
+
+  <table class="table table-striped table-bordered align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Rule A</th>
+        <th>Regex A</th>
+        <th>Rule B</th>
+        <th>Regex B</th>
+        <th>Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a, b, reason in duplicates %}
+      <tr>
+        <td><a href="{% url 'policy_router:rule_edit' a.pk %}">{{ a.name }}</a></td>
+        <td><code>{{ a.regex }}</code></td>
+        <td><a href="{% url 'policy_router:rule_edit' b.pk %}">{{ b.name }}</a></td>
+        <td><code>{{ b.regex }}</code></td>
+        <td><span class="text-danger">{{ reason }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="alert alert-success">
+    ✅ No duplicate or overlapping regex patterns detected.
+  </div>
+{% endif %}
+
+<a href="{% url 'policy_router:rule_list' %}" class="btn btn-secondary mt-3">
+  ← Back to Rules
+</a>
+{% endblock %}

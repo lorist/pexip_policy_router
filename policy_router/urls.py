@@ -27,6 +27,7 @@ urlpatterns = [
     path("rules/resequence/", views.resequence_rules_view, name="rule_resequence"),
     path("rules/reorder/", views.reorder_rules, name="rule_reorder"),
     path("rules/reorder/", views.rule_reorder, name="rule_reorder"),
+    path("rules/check_duplicates/", views.rule_check_duplicates, name="rule_check_duplicates"),
 
 
     # Logs
