@@ -217,7 +217,6 @@ document.addEventListener("DOMContentLoaded", function () {
   searchInput.addEventListener("input", applySearch);
   renderPage(getFilteredRows());
 
-  // --- Drag and drop (unchanged) ---
   let lastOrder = rows.map(row => row.getAttribute("data-id"));
   Sortable.create(tbody, {
     animation: 150,
