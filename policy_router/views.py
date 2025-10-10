@@ -9,7 +9,7 @@ from django.conf import settings
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404, render
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from django.urls import reverse
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -22,6 +22,7 @@ from policy_router.auth import basic_auth_django_user
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
+from django.db import transaction
 
 
 # -----------------------------
@@ -390,7 +391,7 @@ def proxy_participant_policy(request):
 # -----------------------------
 @maybe_protected
 def rule_list(request):
-    rules = PolicyProxyRule.objects.all().order_by("priority", "-updated_at")
+    rules = PolicyProxyRule.objects.all().order_by("priority", "id")
 
     protocols = request.GET.getlist("protocols")
     call_directions = request.GET.getlist("call_directions")
@@ -467,6 +468,69 @@ def rule_duplicate(request, pk):
 
     messages.success(request, f'Rule "{original.name}" duplicated as "{clone.name}".')
     return redirect("policy_router:rule_edit", pk=clone.pk)
+
+@maybe_protected
+def rule_move_up(request, pk):
+    rule = get_object_or_404(PolicyProxyRule, pk=pk)
+    prev_rule = PolicyProxyRule.objects.filter(priority__lt=rule.priority).order_by("-priority").first()
+    if prev_rule:
+        rule.priority, prev_rule.priority = prev_rule.priority, rule.priority
+        rule.save()
+        prev_rule.save()
+    return redirect("policy_router:rule_list")
+
+@maybe_protected
+def rule_move_down(request, pk):
+    rule = get_object_or_404(PolicyProxyRule, pk=pk)
+    next_rule = PolicyProxyRule.objects.filter(priority__gt=rule.priority).order_by("priority").first()
+    if next_rule:
+        rule.priority, next_rule.priority = next_rule.priority, rule.priority
+        rule.save()
+        next_rule.save()
+    return redirect("policy_router:rule_list")
+
+@maybe_protected
+def resequence_rules_view(request):
+    rules = PolicyProxyRule.objects.all().order_by("priority", "id")
+    for index, rule in enumerate(rules, start=1):
+        rule.priority = index
+        rule.save(update_fields=["priority"])
+    messages.success(request, "Rules resequenced successfully.")
+    return redirect("policy_router:rule_list")
+
+@maybe_protected
+@require_POST
+def reorder_rules(request):
+    """Update rule priorities based on drag-drop order."""
+    try:
+        data = json.loads(request.body)
+        new_order = data.get("order", [])
+        for i, rule_id in enumerate(new_order, start=1):
+            PolicyProxyRule.objects.filter(id=rule_id).update(priority=i)
+        return JsonResponse({"status": "ok", "message": "Rules reordered"})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=400)
+    
+@require_POST
+@maybe_protected
+@csrf_exempt
+def rule_reorder(request):
+    """
+    Receive an ordered list of rule IDs and resequence their priorities accordingly.
+    """
+    try:
+        data = json.loads(request.body)
+        order = data.get("order", [])
+        if not order or not isinstance(order, list):
+            return JsonResponse({"status": "error", "message": "Invalid order payload"}, status=400)
+
+        with transaction.atomic():
+            for index, rule_id in enumerate(order):
+                PolicyProxyRule.objects.filter(id=rule_id).update(priority=index + 1)
+
+        return JsonResponse({"status": "ok", "refresh": True})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
 # -----------------------------
 # Logs
 # -----------------------------

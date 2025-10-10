@@ -52,6 +52,12 @@
   </a>
 </div>
 
+<div class="mb-3 text-end">
+  <a href="{% url 'policy_router:rule_resequence' %}" class="btn btn-outline-secondary btn-sm">
+    🔄 Resequence Priorities
+  </a>
+</div>
+
 <!-- Rules Table -->
 <div class="card">
   <div class="card-body p-0">
@@ -59,6 +65,7 @@
       <table class="table table-hover table-bordered table-striped align-middle mb-0">
         <thead class="table-dark">
           <tr>
+            <th style="width: 2rem;"></th> <!-- drag handle -->
             <th>Name</th>
             <th>Regex</th>
             <th>Priority</th>
@@ -71,9 +78,12 @@
             <th class="text-center">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="rules-table-body">
           {% for rule in rules %}
-          <tr>
+          <tr data-id="{{ rule.id }}" style="cursor: grab;">
+            <td class="text-muted text-center align-middle">
+              <i class="bi bi-grip-vertical"></i>
+            </td>
             <td><strong>{{ rule.name }}</strong></td>
             <td><code>{{ rule.regex }}</code></td>
             <td>{{ rule.priority }}</td>
@@ -133,13 +143,128 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="10" class="text-center text-muted py-3">No rules found.</td>
+            <td colspan="11" class="text-center text-muted py-3">No rules found.</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+
     </div>
   </div>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const tbody = document.getElementById("rules-table-body");
+  if (!tbody) return;
+
+  // Track current order to detect real changes
+  let lastOrder = Array.from(tbody.querySelectorAll("tr")).map(row => row.getAttribute("data-id"));
+
+  Sortable.create(tbody, {
+    animation: 150,
+    handle: "td:first-child",
+    chosenClass: "sortable-chosen",
+    dragClass: "sortable-drag",
+    ghostClass: "sortable-ghost",
+
+    onStart: function(evt) {
+      evt.item.style.cursor = "grabbing";
+    },
+
+    onEnd: function(evt) {
+      evt.item.style.cursor = "grab";
+
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const newOrder = rows.map(row => row.getAttribute("data-id"));
+
+      // Skip if order hasn't changed
+      if (JSON.stringify(newOrder) === JSON.stringify(lastOrder)) {
+        console.log("ℹ️ No change in order — skipping update");
+        return;
+      }
+
+      lastOrder = newOrder;
+
+      const now = new Date();
+      const formattedNow = now.toLocaleString();
+
+      // Update displayed priorities and timestamps
+      rows.forEach((row, index) => {
+        const priorityCell = row.children[3];
+        if (priorityCell) priorityCell.textContent = index + 1;
+
+        const updatedCell = row.children[row.children.length - 2];
+        if (updatedCell) updatedCell.textContent = formattedNow;
+
+        row.style.transition = "background-color 0.4s";
+        row.style.backgroundColor = "#d1e7dd";
+        setTimeout(() => (row.style.backgroundColor = ""), 500);
+      });
+
+      // Send updated order to backend
+      fetch("{% url 'policy_router:rule_reorder' %}", {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ order: newOrder })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === "ok") {
+          showToast("✅ Rules reordered successfully");
+          // optional small delay to see highlight flash before refresh
+          if (data.refresh) {
+            setTimeout(() => location.reload(), 800);
+          }
+        } else {
+          showToast("❌ " + (data.message || "Error reordering rules"), true);
+        }
+      })
+      .catch(err => showToast("⚠️ Network error: " + err, true));
+    }
+  });
+
+  // Toast notifications
+  const toastContainer = document.createElement("div");
+  toastContainer.className = "position-fixed bottom-0 end-0 p-3";
+  toastContainer.style.zIndex = "1055";
+  document.body.appendChild(toastContainer);
+
+  function showToast(message, isError = false) {
+    const toastEl = document.createElement("div");
+    toastEl.className = `toast align-items-center text-bg-${isError ? "danger" : "success"} border-0 show shadow`;
+    toastEl.role = "alert";
+    toastEl.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    `;
+    toastContainer.appendChild(toastEl);
+    setTimeout(() => toastEl.remove(), 4000);
+  }
+});
+</script>
+
+<style>
+/* === Drag & Drop styling === */
+tr[data-id] td:first-child {
+  cursor: grab;
+  text-align: center;
+  width: 2rem;
+}
+
+.sortable-chosen {
+  background-color: #fff3cd !important;
+  opacity: 0.95;
+}
+
+.sortable-ghost {
+  background-color: #e2e3e5 !important;
+  opacity: 0.7;
+}
+</style>
 
 {% endblock %}

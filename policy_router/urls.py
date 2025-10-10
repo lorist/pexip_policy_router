@@ -24,6 +24,12 @@ urlpatterns = [
     path("rules/<int:pk>/delete/", views.rule_delete, name="rule_delete"),
     path("rules/test/", views.rule_tester, name="rule_tester"),
     path("rules/<int:pk>/duplicate/", views.rule_duplicate, name="rule_duplicate"),
+    path("rules/resequence/", views.resequence_rules_view, name="rule_resequence"),
+    path("rules/reorder/", views.reorder_rules, name="rule_reorder"),
+    path("rules/reorder/", views.rule_reorder, name="rule_reorder"),
+
+
+
 
 
     # Logs
