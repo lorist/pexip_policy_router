@@ -29,18 +29,36 @@
           {% endif %}
         </div>
       </div>
-      <div class="row g-3">
-        <div class="col-md-6">
-          {{ form.protocols.label_tag }}
+      <div class="mb-3">
+        <label for="{{ form.protocols.id_for_label }}" class="form-label">Protocols</label>
+        <div class="input-group">
           {{ form.protocols }}
-          <div class="form-text">Select one or more supported protocols (e.g., SIP, WebRTC).</div>
+          <button
+            type="button"
+            class="btn btn-outline-secondary clear-multiselect"
+            data-target-id="{{ form.protocols.id_for_label }}"
+          >
+            🧹 Clear
+          </button>
         </div>
-        <div class="col-md-6">
-          {{ form.call_directions.label_tag }}
-          {{ form.call_directions }}
-          <div class="form-text">Select one or more call directions (Dial In, Dial Out, Non Dial).</div>
-        </div>
+        <div class="form-text">{{ form.protocols.help_text }}</div>
       </div>
+
+      <div class="mb-3">
+        <label for="{{ form.call_directions.id_for_label }}" class="form-label">Call Directions</label>
+        <div class="input-group">
+          {{ form.call_directions }}
+          <button
+            type="button"
+            class="btn btn-outline-secondary clear-multiselect"
+            data-target-id="{{ form.call_directions.id_for_label }}"
+          >
+            🧹 Clear
+          </button>
+        </div>
+        <div class="form-text">{{ form.call_directions.help_text }}</div>
+      </div>
+
     </div>
   </div>
 
@@ -345,7 +363,7 @@ document.addEventListener("DOMContentLoaded", function() {
   });
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-bs-theme"] });
 
-  // Prevent invalid submission
+    // Prevent invalid submission
   document.querySelector("form").addEventListener("submit", e => {
     const sValid = validateJSON(serviceInput, serviceError);
     const pValid = validateJSON(participantInput, participantError);
@@ -353,6 +371,56 @@ document.addEventListener("DOMContentLoaded", function() {
       e.preventDefault();
       alert("Please fix invalid JSON before saving.");
     }
+  });
+
+  // === Clear All buttons for multiselects (with auto-disable + tooltip) ===
+  document.querySelectorAll(".clear-multiselect").forEach(btn => {
+    const targetId = btn.getAttribute("data-target-id");
+    const select = document.getElementById(targetId);
+    if (!select) return;
+
+    // Try to infer label text (e.g., "Protocols" or "Call Directions")
+    const label = document.querySelector(`label[for="${targetId}"]`);
+    const fieldName = label ? label.textContent.trim() : "field";
+
+    // Initialize Bootstrap tooltip
+    btn.setAttribute("data-bs-toggle", "tooltip");
+    btn.setAttribute("data-bs-placement", "top");
+    const tooltip = new bootstrap.Tooltip(btn);
+
+    function updateButtonState() {
+      const anySelected = Array.from(select.options).some(opt => opt.selected);
+      btn.disabled = !anySelected;
+      btn.classList.toggle("btn-outline-secondary", anySelected);
+      btn.classList.toggle("btn-outline-light", !anySelected);
+      btn.setAttribute(
+        "title",
+        anySelected ? `Clear all ${fieldName}` : `No ${fieldName.toLowerCase()} selected`
+      );
+      tooltip.dispose(); // Refresh tooltip to update text
+      new bootstrap.Tooltip(btn);
+    }
+
+    // Initial state
+    updateButtonState();
+
+    // Watch for user selection changes
+    select.addEventListener("change", updateButtonState);
+
+    // Click handler
+    btn.addEventListener("click", () => {
+      Array.from(select.options).forEach(opt => (opt.selected = false));
+      updateButtonState();
+
+      // Visual feedback
+      btn.classList.add("btn-success");
+      btn.textContent = "✅ Cleared";
+      setTimeout(() => {
+        btn.classList.remove("btn-success");
+        btn.textContent = "🧹 Clear";
+        updateButtonState();
+      }, 1000);
+    });
   });
 });
 </script>

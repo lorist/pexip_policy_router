@@ -24,8 +24,8 @@ class PolicyProxyRule(models.Model):
     # Filters
     regex = models.CharField(max_length=255, help_text="Local alias regex to match incoming requests")
 
-    protocols = models.JSONField(default=list, blank=True, null=False)
-    call_directions = models.JSONField(default=list, blank=True, null=False)
+    protocols = models.JSONField(default=list, blank=True, null=True)
+    call_directions = models.JSONField(default=list, blank=True, null=True)
     
     # Upstream targets
     service_target_url = models.URLField(blank=True, null=True)
