@@ -15,6 +15,7 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
@@ -24,6 +25,11 @@ from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
 from django.db import transaction
 
+def _increment_rule_usage(rule: PolicyProxyRule):
+    """Increment usage metrics for a rule."""
+    rule.match_count = (rule.match_count or 0) + 1
+    rule.last_matched_at = timezone.now()
+    rule.save(update_fields=["match_count", "last_matched_at"])
 
 # -----------------------------
 # Helpers
@@ -296,6 +302,9 @@ def proxy_service_policy(request):
                     continue
                 if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
+                
+                # --- Track usage ---
+                _increment_rule_usage(rule) 
 
                 # --- Override check ---
                 if rule.always_continue_service:
@@ -350,6 +359,9 @@ def proxy_participant_policy(request):
                     continue
                 if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
+                
+                # --- Track usage ---
+                _increment_rule_usage(rule)  
 
                 # --- Override check ---
                 if rule.always_continue_participant:

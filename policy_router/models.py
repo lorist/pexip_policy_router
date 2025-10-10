@@ -45,7 +45,8 @@ class PolicyProxyRule(models.Model):
     # Management
     priority = models.IntegerField(default=100, help_text="Lower numbers match first")
     is_active = models.BooleanField(default=True)
-
+    match_count = models.PositiveIntegerField(default=0)
+    last_matched_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -67,6 +67,8 @@
         <thead class="table-dark">
           <tr>
             <th style="width: 2rem;"></th>
+            <th>Hits</th>
+            <th>Last Matched</th>
             <th>Name</th>
             <th>Regex</th>
             <th>Priority</th>
@@ -89,6 +91,14 @@
               style="cursor: grab;">
             <td class="text-muted text-center align-middle">
               <i class="bi bi-grip-vertical"></i>
+            </td>
+            <td>{{ rule.match_count|default:0 }}</td>
+            <td>
+              {% if rule.last_matched_at %}
+                {{ rule.last_matched_at|date:"Y-m-d H:i" }}
+              {% else %}
+                <span class="text-muted">Never</span>
+              {% endif %}
             </td>
             <td><strong>{{ rule.name }}</strong></td>
             <td><code>{{ rule.regex }}</code></td>
