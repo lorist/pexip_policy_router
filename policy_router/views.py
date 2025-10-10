@@ -272,7 +272,7 @@ def rule_tester(request):
     })
 
 # -----------------------------
-# Proxy Views
+# Policy Views
 # -----------------------------
 @csrf_exempt
 @maybe_basic_auth_protected
@@ -452,7 +452,21 @@ def rule_delete(request, pk):
         return redirect(reverse("policy_router:rule_list"))
     return render(request, "policy_router/rule_confirm_delete.html", {"rule": rule})
 
+@maybe_protected
+def rule_duplicate(request, pk):
+    """Duplicate an existing rule."""
+    original = get_object_or_404(PolicyProxyRule, pk=pk)
+    clone = PolicyProxyRule.objects.get(pk=pk)
 
+    # Detach and modify
+    clone.pk = None  # ensures a new object is created
+    clone.name = f"Copy of {original.name}"
+    clone.priority = original.priority + 1  # optional: shift priority slightly
+    clone.is_active = False  # optional: prevent accidental activation
+    clone.save()
+
+    messages.success(request, f'Rule "{original.name}" duplicated as "{clone.name}".')
+    return redirect("policy_router:rule_edit", pk=clone.pk)
 # -----------------------------
 # Logs
 # -----------------------------

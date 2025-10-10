@@ -23,6 +23,8 @@ urlpatterns = [
     path("rules/<int:pk>/edit/", views.rule_edit, name="rule_edit"),
     path("rules/<int:pk>/delete/", views.rule_delete, name="rule_delete"),
     path("rules/test/", views.rule_tester, name="rule_tester"),
+    path("rules/<int:pk>/duplicate/", views.rule_duplicate, name="rule_duplicate"),
+
 
     # Logs
     path("logs/", views.log_list, name="log_list"),
