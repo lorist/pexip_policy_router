@@ -29,9 +29,6 @@ urlpatterns = [
     path("rules/reorder/", views.rule_reorder, name="rule_reorder"),
 
 
-
-
-
     # Logs
     path("logs/", views.log_list, name="log_list"),
 
