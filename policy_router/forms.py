@@ -2,6 +2,9 @@ import json
 from django import forms
 from .models import PolicyProxyRule
 
+class CSVImportForm(forms.Form):
+    csv_file = forms.FileField(label="Select CSV file")
+
 
 class PolicyProxyRuleForm(forms.ModelForm):
     protocols = forms.MultipleChoiceField(

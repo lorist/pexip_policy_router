@@ -1,0 +1,66 @@
+{% extends "policy_router/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-5">
+  <h2 class="mb-4">Manage Policy Rules (CSV)</h2>
+
+  <!-- Export Section -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title">Export Rules</h5>
+      <p class="card-text">Download all current PolicyProxyRule entries as a CSV file.</p>
+      <a href="{% url 'policy_router:export_rules_csv' %}" class="btn btn-primary">⬇ Download CSV</a>
+    </div>
+  </div>
+
+  <!-- Import Section -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title">Import Rules</h5>
+      <p class="card-text">
+        Upload a CSV file to create or update PolicyProxyRule entries.
+        Existing rules with the same <code>name</code> will be updated.
+      </p>
+
+      <form id="csv-import-form" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-3">
+          <input type="file" name="file" id="csvFile" class="form-control" accept=".csv" required>
+        </div>
+        <button type="submit" class="btn btn-success">
+          ⬆ Upload & Import
+        </button>
+      </form>
+
+      <div id="import-status" class="mt-3"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById("csv-import-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const form = e.target;
+  const status = document.getElementById("import-status");
+  status.innerHTML = "⏳ Uploading...";
+
+  const formData = new FormData(form);
+  const response = await fetch("{% url 'policy_router:import_rules_csv' %}", {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value
+    },
+    body: formData
+  });
+
+  const result = await response.json();
+  if (response.ok) {
+    status.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+  } else {
+    status.innerHTML = `<div class="alert alert-danger">${result.error || 'Import failed.'}</div>`;
+  }
+});
+</script>
+{% endblock %}

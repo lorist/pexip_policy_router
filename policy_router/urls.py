@@ -30,4 +30,9 @@ urlpatterns = [
     # Auth
     path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="/login/"), name="logout"),
+
+    # CSV import/export
+    path("rules/export/", views.export_rules_csv, name="export_rules_csv"),
+    path("rules/import/", views.import_rules_csv, name="import_rules_csv"),
+    path("rules/manage/", views.manage_rules_view, name="manage_rules"),
 ]
