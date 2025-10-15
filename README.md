@@ -1,145 +1,152 @@
-# Pexip Policy Router
+# 🧭 Pexip Policy Router
 
-A Django-based proxy and management interface for routing **Pexip Infinity Service** and **Participant Policy** requests.  
-This project allows administrators to configure regex-based rules to forward policy requests to one or more upstream policy servers, with support for:
-
-- **Service policy proxying** (`/policy/v1/service/configuration`)
-- **Participant policy proxying** (`/policy/v1/participant/properties`)
-- **Regex-based rule matching** on `local_alias`
-- **Rule matching** on `call_direction` and/or `protocol`
-- **Rule priorities** (lower numbers evaluated first)
-- **Optional Basic Authentication** per upstream
-- **Request/response logging** with a searchable log viewer
+A **Django-based proxy and management interface** for routing **Pexip Infinity Service** and **Participant Policy** requests.  
+Administrators can configure **regex-based rules** to forward or override policy requests to one or more upstream servers — with live metrics, duplicate detection, and a modern web UI.
 
 ---
 
-## Screenshots
+## ⚙️ Core Capabilities
 
-### Rule Management
+- **Service Policy Proxy** → `/policy/v1/service/configuration`  
+- **Participant Policy Proxy** → `/policy/v1/participant/properties`
+- **Regex Rule Matching** on `local_alias`
+- **Optional filters** for `protocol` and `call_direction`
+- **Rule Priority Ordering** (lower numbers evaluated first)
+- **Basic Authentication** per upstream
+- **Full request / response logging**
+- **Web UI for rules & logs**
+- **Import / Export via CSV**
+
+---
+
+## 🧩 Modern UI Features
+
+| Feature | Description |
+|----------|--------------|
+| 🔀 **Drag-and-Drop Reordering** | Easily change rule priorities by dragging rows — instant persistence |
+| 🧬 **Duplicate Detection** | Identifies overlapping regex patterns, with tooltips showing overlap examples |
+| 📈 **Usage Metrics** | Each rule tracks hit count and last-matched timestamp |
+| 🧱 **CSV Import / Export** | Backup or bulk-edit all rules via a simple CSV |
+| 🪄 **Rule Duplication** | One-click cloning of existing rules |
+| 🔒 **Basic Auth Configurable per Rule** | Different upstream credentials per target |
+| 💡 **Override Responses** | Instantly return custom JSON for service or participant policies |
+| 🔍 **Log Viewer** | Filter by rule, alias, and date — with syntax-highlighted JSON |
+| 🧭 **Filter Memory & Live Search** | Filters persist across sessions for smooth UX |
+| 🖱️ **Sticky Table Columns** | “Grip” and “Actions” columns always visible — no horizontal scrolling |
+
+---
+
+## 🖼️ Screenshots
+
+### Rules Dashboard  
 ![Rules List](docs/screenshots/policy_router_list.png)
 
-### Rule Form
+### Edit Rule  
 ![Rules Form](docs/screenshots/policy_router_form.png)
 
-### Logs Viewer
+### Logs Viewer  
 ![Logs View](docs/screenshots/policy_router_filter_logs.png)
 
 ---
-## ✨ Features
 
-- **Rule-based routing**
-  - Match requests based on `local_alias` regex
-  - Rules are applied in **priority order** (lowest number first)
-  - Active/inactive toggle per rule
+## ✨ Highlights
 
-- **Overrides**
-  - Rules can be configured to **always return a JSON response** instead of forwarding upstream
-  - Default override responses:
-    ```json
-    { "status": "success", "action": "continue" }
-    ```
-  - Custom JSON responses can be defined per rule for:
-    - Service policy (`/policy/v1/service/configuration`)
-    - Participant policy (`/policy/v1/participant/properties`)
+### Rule-Based Routing
+- Rules evaluated by ascending priority
+- Match against `local_alias`, `protocol`, and `call_direction`
+- Optional JSON override instead of proxying upstream
 
-- **Authentication**
-  - Supports optional **Basic Auth** for upstream targets
+### Override Mode
+Define static responses for fast local handling:
+```json
+{ "status": "success", "action": "continue" }
+```
+Used for service and participant endpoints independently.
 
-- **Logging**
-  - Every request and response is logged in the database
-  - Logs include:
-    - Rule matched
-    - Request path, method, body
-    - Response status and body
-    - Whether the rule was an **override**
-  - Logs UI:
-    - Filter by rule, alias, date/time
-    - Highlight search terms
-    - Pretty-printed JSON with syntax highlighting
+### Secure Proxying
+- Supports per-rule **Basic Auth** to authenticate against remote policy servers  
+- Automatically strips hop-by-hop headers before forwarding
 
-- **Admin & UI**
-  - Manage rules through Django Admin or custom HTML forms
-  - Add/edit/delete rules
-  - Override toggles with JSON editor fields
-  - Logs displayed with pagination, highlighting, and JSON pretty-printing
-
-- **Deployment Ready**
-  - Includes `.gitignore`, `requirements.txt`
----
-
-##  Requirements
-
-- Python **3.11+**
-- Django **5.0+**
-- httpx
-
-Dependencies are listed in `requirements.txt`.
+### Logging
+- Every request/response is stored with:
+  - Rule matched
+  - Alias and parameters
+  - Upstream URL and response code
+  - Override flag
+- Web UI includes:
+  - Filter/search by alias, rule, or timeframe
+  - Syntax-highlighted JSON
+  - Pagination and export options
 
 ---
 
-##  Installation
+## 🧱 Installation for a dev environment
 
-1. Clone the repository:
+### Requirements
+- **Python 3.11+**
+- **Django 5.0+**
+- **httpx**
 
-   ```bash
-   git clone https://github.com/your-org/pexip-policy-router.git
-   cd pexip-policy-router
+### Steps
+```bash
+git clone https://github.com/your-org/pexip-policy-router.git
+cd pexip-policy-router
 
-2. Create a virtual environment and install dependencies:
+python3 -m venv venv
+source venv/bin/activate   # macOS/Linux
+venv\Scripts\activate      # Windows
 
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate   # On Linux/macOS
-    venv\Scripts\activate      # On Windows
+pip install -r requirements.txt
+python manage.py makemigrations policy_router
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver 0.0.0.0:8000
+```
 
-    pip install -r requirements.txt
+---
 
-3. Run migrations:
+## 🚀 Usage
 
-    ```bash
-    python manage.py makemigrations policy_router
-    python manage.py migrate
-
-4. Create superuser (optional):
-
-    ```bash
-    python manage.py createsuperuser
-
-5. Start the development server:
-
-    ```bash
-    python manage.py runserver 0.0.0.0:8000
-
-##  Usage
-
-- Rules UI: Visit http://localhost:8000/rules/ to create, edit, and delete rules.
-- Logs UI: Visit http://localhost:8000/logs/ to search and view request logs.
+### Web UI
+- Rules: [http://localhost:8000/rules/](http://localhost:8000/rules/)
+- Logs: [http://localhost:8000/logs/](http://localhost:8000/logs/)
 
 ### Example Rule
+| Field | Example |
+|-------|----------|
+| Local Alias Regex | `^(sip:)?99\d+(@example.com)?` |
+| Service Policy Target | `https://webscheduler.example.com` |
+| Participant Policy Target | `https://webscheduler.example.com` |
+| Priority | `1` |
+| Basic Auth | `username` / `password` |
 
-- Local Alias Regex: ^room-\d+$
-- Service Policy Target: https://upstream.example.com
-- Participant Policy Target: https://upstream.example.com
-- Priority: 1
-- Basic Auth: username / password
+### Log Rotation
+```bash
+python manage.py rotate_logs --days=30
+```
+*(Can be scheduled with cron or Celery Beat.)*
 
-### Log rotation
+---
 
-As this is a POC, you can add log rotation to a crod job or run manually. Proper implementation would be to use something like a Celery Beat Task
+## ☁️ Deploy to Azure Web App (Linux)
 
-    ```bash
-    python manage.py rotate_logs --days=30
+See [DeployAzureWebApp.md](DeployAzureWebApp.md) for deployment notes.
 
-### Deploy to Azure WebApp - Linux
-  See DeployAzureWebApp.md
+---
 
-### Authentication
+## 🔐 Authentication
 
-The application is configured to use the superuser credentials configured in step 4. The policy endpoints also use these credentials, so add them to the configration of the external policy server in the Infinity policy profile.
+The app uses Django’s authentication system.  
+By default:
+- Web UI requires login (`ENABLE_WEB_AUTH = True`)
+- Policy endpoints can require Basic Auth (`ENABLE_POLICY_AUTH = True`)
 
-To disable or enable authentication for the app, adjust the settings in the settings.py file:
+Configured in `settings.py`:
+```python
+ENABLE_WEB_AUTH = True        # Require login for web views
+ENABLE_POLICY_AUTH = True     # Require Basic Auth for /policy endpoints
+```
 
-    ```bash
-    # Authentication toggles
-    ENABLE_WEB_AUTH = True        # Require login for web views (/rules)
-    ENABLE_POLICY_AUTH = True     # Require Basic Auth for policy endpoints
+Add the same credentials to your **Infinity External Policy Server** configuration.
+
+---
