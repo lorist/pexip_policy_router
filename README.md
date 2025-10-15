@@ -1,11 +1,11 @@
-# 🧭 Pexip Policy Router
+# Pexip Policy Router
 
 A **Django-based proxy and management interface** for routing **Pexip Infinity Service** and **Participant Policy** requests.  
 Administrators can configure **regex-based rules** to forward or override policy requests to one or more upstream servers — with live metrics, duplicate detection, and a modern web UI.
 
 ---
 
-## ⚙️ Core Capabilities
+## Core Capabilities
 
 - **Service Policy Proxy** → `/policy/v1/service/configuration`  
 - **Participant Policy Proxy** → `/policy/v1/participant/properties`
@@ -19,24 +19,24 @@ Administrators can configure **regex-based rules** to forward or override policy
 
 ---
 
-## 🧩 Modern UI Features
+## Modern UI Features
 
 | Feature | Description |
 |----------|--------------|
-| 🔀 **Drag-and-Drop Reordering** | Easily change rule priorities by dragging rows — instant persistence |
-| 🧬 **Duplicate Detection** | Identifies overlapping regex patterns, with tooltips showing overlap examples |
-| 📈 **Usage Metrics** | Each rule tracks hit count and last-matched timestamp |
-| 🧱 **CSV Import / Export** | Backup or bulk-edit all rules via a simple CSV |
-| 🪄 **Rule Duplication** | One-click cloning of existing rules |
-| 🔒 **Basic Auth Configurable per Rule** | Different upstream credentials per target |
-| 💡 **Override Responses** | Instantly return custom JSON for service or participant policies |
-| 🔍 **Log Viewer** | Filter by rule, alias, and date — with syntax-highlighted JSON |
-| 🧭 **Filter Memory & Live Search** | Filters persist across sessions for smooth UX |
-| 🖱️ **Sticky Table Columns** | “Grip” and “Actions” columns always visible — no horizontal scrolling |
+| **Drag-and-Drop Reordering** | Easily change rule priorities by dragging rows — instant persistence |
+| **Duplicate Detection** | Identifies overlapping regex patterns, with tooltips showing overlap examples |
+| **Usage Metrics** | Each rule tracks hit count and last-matched timestamp |
+| **CSV Import / Export** | Backup or bulk-edit all rules via a simple CSV |
+| **Rule Duplication** | One-click cloning of existing rules |
+| **Basic Auth Configurable per Rule** | Different upstream credentials per target |
+| **Override Responses** | Instantly return custom JSON for service or participant policies |
+| **Log Viewer** | Filter by rule, alias, and date — with syntax-highlighted JSON |
+| **Filter Memory & Live Search** | Filters persist across sessions for smooth UX |
+| **Sticky Table Columns** | “Grip” and “Actions” columns always visible — no horizontal scrolling |
 
 ---
 
-## 🖼️ Screenshots
+## Screenshots
 
 ### Rules Dashboard  
 ![Rules List](docs/screenshots/policy_router_list.png)
@@ -49,7 +49,7 @@ Administrators can configure **regex-based rules** to forward or override policy
 
 ---
 
-## ✨ Highlights
+##  Highlights
 
 ### Rule-Based Routing
 - Rules evaluated by ascending priority
@@ -80,7 +80,7 @@ Used for service and participant endpoints independently.
 
 ---
 
-## 🧱 Installation for a dev environment
+## Installation for a dev environment
 
 ### Requirements
 - **Python 3.11+**
@@ -105,7 +105,7 @@ python manage.py runserver 0.0.0.0:8000
 
 ---
 
-## 🚀 Usage
+## Usage
 
 ### Web UI
 - Rules: [http://localhost:8000/rules/](http://localhost:8000/rules/)
@@ -128,13 +128,13 @@ python manage.py rotate_logs --days=30
 
 ---
 
-## ☁️ Deploy to Azure Web App (Linux)
+## Deploy to Azure Web App (Linux)
 
 See [DeployAzureWebApp.md](DeployAzureWebApp.md) for deployment notes.
 
 ---
 
-## 🔐 Authentication
+## Authentication
 
 The app uses Django’s authentication system.  
 By default:
