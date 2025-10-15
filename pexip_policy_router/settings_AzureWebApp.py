@@ -10,3 +10,14 @@ CSRF_TRUSTED_ORIGINS = ['https://'+ os.environ['WEBSITE_HOSTNAME']]
 # Other settings.py overides for production
 DEBUG = False
 SECRET_KEY = [os.environ['SECRET_KEY']]
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ['MYSQL_NAME'],
+        'USER': os.environ['MYSQL_USER'],
+        'PASSWORD': os.environ['MYSQL_PW'],
+        'HOST': os.environ['MYSQL_HOST'],  # e.g., 'localhost' or an IP address
+        'PORT': '3306',  # Default MySQL port
+    }
+}
