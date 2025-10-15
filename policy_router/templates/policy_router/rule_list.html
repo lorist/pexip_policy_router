@@ -64,10 +64,15 @@
 </div>
 
 <!-- Rules Table -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Rules</h5>
+  <small class="text-muted">Scroll horizontally to view full details</small>
+</div>
+
 <div class="card">
   <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover table-bordered table-striped align-middle mb-0">
+    <div class="table-responsive position-relative">
+      <table class="table table-hover table-bordered table-striped align-middle mb-0 rules-table">
         <thead class="table-dark">
           <tr>
             <th style="width: 2rem;"></th>
@@ -265,9 +270,77 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 
 <style>
-#rules-table-body tr { transition: all 0.2s ease-in-out; }
-.sortable-chosen { background-color: #fff3cd !important; opacity: 0.95; }
-.sortable-ghost { background-color: #e2e3e5 !important; opacity: 0.7; }
+  #rules-table-body tr { transition: all 0.2s ease-in-out; }
+  .sortable-chosen { background-color: #fff3cd !important; opacity: 0.95; }
+  .sortable-ghost { background-color: #e2e3e5 !important; opacity: 0.7; }
+  .rules-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  /* Keep first (grip) and last (actions) columns fixed */
+  .rules-table th:first-child,
+  .rules-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--bs-body-bg);
+    z-index: 2;
+    box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+  }
+
+  .rules-table th:last-child,
+  .rules-table td:last-child {
+    position: sticky;
+    right: 0;
+    background: var(--bs-body-bg);
+    z-index: 2;
+    box-shadow: -2px 0 4px rgba(0,0,0,0.1);
+  }
+
+  /* Better column sizing */
+  .rules-table th, .rules-table td {
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .rules-table td code {
+    font-size: 0.85rem;
+  }
+
+  .rules-table .btn-group,
+  .rules-table .d-flex {
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+  }
+
+  /* Reduce button padding to fit more */
+  .rules-table .btn-sm {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  /* Hover highlight across full width */
+  .rules-table tbody tr:hover {
+    background-color: rgba(25, 135, 84, 0.05);
+  }
+  /* Match sticky header cells with dark header background */
+  .rules-table thead th:first-child,
+  .rules-table thead th:last-child {
+    background-color: var(--bs-dark) !important;
+    color: var(--bs-light) !important;
+    z-index: 3; /* Ensure above scroll shadows */
+  }
+
+  /* Optional: keep the subtle shadow to separate fixed columns */
+  .rules-table th:first-child {
+    box-shadow: 2px 0 4px rgba(0,0,0,0.2);
+  }
+
+  .rules-table th:last-child {
+    box-shadow: -2px 0 4px rgba(0,0,0,0.2);
+  }
+
 </style>
 
 {% endblock %}
