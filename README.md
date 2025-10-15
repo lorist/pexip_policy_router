@@ -47,6 +47,9 @@ Administrators can configure **regex-based rules** to forward or override policy
 ### Logs Viewer  
 ![Logs View](docs/screenshots/policy_router_filter_logs.png)
 
+### Export/import rules 
+![Logs View](docs/screenshots/policy_router_csv.png)
+
 ---
 
 ##  Highlights
