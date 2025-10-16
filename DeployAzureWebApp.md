@@ -1,42 +1,48 @@
-# Code changes for deploy to native Azure Linux WebApp
+# Deploy Pexip Policy Router to Azure
 
-REF: https://learn.microsoft.com/en-us/azure/app-service/configure-language-python
+### Azure Services Diagram
+![Azure Services](docs\screenshots\python-postgresql-app-architecture-240px.png)
 
-## Key concepts
-Azure WebApp will make use of "app settings" ENV variableson build
+## Azure Services List
 
-SCM_DO_BUILD_DURING_DEPLOYMENT
+- **Web App** Provides serverless  web services for UI & Policy requests for the Django framework
+- **Azure Database for PostgreSQL flexible server** Provides serverless persistent SQL server used by Django framework
+- **App Service Plan** Provides underlying enviroment (Linux), compute & pricing plan to support the web app
 
-Set to 1 or True will then do the following:
+## Deployment
 
-Run pip install -r requirements.txt. The requirements.txt file must be in the project's root folder.
+Azure portal can be used for ease of use to create the above resources.
 
-If manage.py is found in the root of the repository (which indicates a Django app), run manage.py collectstatic. However, if the DISABLE_COLLECTSTATIC setting is true, this step is skipped.
+### Reference
 
-PRE_BUILD_COMMAND
+https://learn.microsoft.com/en-us/azure/app-service/configure-language-python
 
-Runs commands before build
+https://learn.microsoft.com/en-us/azure/app-service/tutorial-python-postgresql-app-django?tabs=copilot&pivots=azure-portal
 
-POST_BUILD_COMMAND
+### Configure Azure resources
 
-Runs commands after build
+Once the Azure Web App has been deployed enviroment variables are used by the Django app settings:
 
-## Example App Settings for pexip_policy_router
+- **SCM_DO_BUILD_DURING_DEPLOYMENT** Should be set to true by default
+- **DISABLE_COLLECTSTATIC** Set to true
+- **DB_NAME** "postgres" by default
+- **DB_USER** SQL admin username configured when creating Azure PostgreSQL service
+- **DB_PW** SQL admin password configured when creating Azure PostgreSQL service
+- **DB_HOST** SQL endpoint/hostname configured when creating Azure PostgreSQL service e.g. dbname.postgres.database.azure.com
 
-SCM_DO_BUILD_DURING_DEPLOYMENT : True
+These enviroment variables can be configured directly in Azure Portal or using VSCode with Azure Extensions
 
-DISABLE_COLLECTSTATIC :  False
+### Deploy app
 
-POST_BUILD_COMMAND : scripts/postbuild.sh
+Use VSCode to deploy the repo to Web App
 
-## Django specic App Settings - access via os.environ['VARNAME']
+### Post Deploy
 
-SECRET_KEY - Can be used as Django Secret key
+Once app is deployed the database needs to be managed
 
-DEBUG - set to false in production
+- SSH onto app via Azure Portal
 
-ALLOWED_HOSTS -  Use [os.environ['WEBSITE_HOSTNAME']] in settings.py to use Azure WebApp hostname
+Run database migration & super user commands:
 
-DATABASES - can be used for database connection in a production enviroment - possible future use
-
-N.B. Django files such as settings.py should be configured to access these via "os.environ['VARNAME']" & requires "import os"
+- `python manage.py migrate --settings pexip_policy_router.settings_AzureWebApp`
+- `python manage.py createsuperuser --settings pexip_policy_router.settings_AzureWebApp`
