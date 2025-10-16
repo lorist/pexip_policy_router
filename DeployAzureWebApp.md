@@ -1,7 +1,7 @@
 # Deploy Pexip Policy Router to Azure
 
 ### Azure Services Diagram
-![Azure Services](docs\screenshots\python-postgresql-app-architecture-240px.png)
+![Azure Services](docs/screenshots/python-postgresql-app-architecture-240px.png)
 
 ## Azure Services List
 
