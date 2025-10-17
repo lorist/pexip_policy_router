@@ -42,6 +42,13 @@
           </button>
         </div>
         <div class="form-text">{{ form.protocols.help_text }}</div>
+        <div class="mb-3">
+          {{ form.source_match.label_tag }}
+          {{ form.source_match }}
+          <div class="form-text">
+            Optional source IP or FQDN of the Infinity node. Leave empty to match any source.
+          </div>
+        </div>
       </div>
 
       <div class="mb-3">
