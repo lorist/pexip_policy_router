@@ -32,6 +32,8 @@ urlpatterns = [
 
     # Logs
     path("logs/", views.log_list, name="log_list"),
+    path("logs/export/", views.export_logs_txt, name="export_logs_txt"),
+
 
     # Auth
     path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),

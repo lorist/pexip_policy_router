@@ -58,6 +58,12 @@ class PolicyProxyRule(models.Model):
         help_text="Optional source IP or FQDN of the Infinity node. "
                   "Leave blank to match any source."
     )
+    source_host = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Source IP or FQDN of the requesting Infinity node"
+    )
 
     def clean(self):
         """Ensure DB consistency and detect duplicate or overlapping regex patterns."""
@@ -156,6 +162,12 @@ class PolicyRequestLog(models.Model):
         ],
     )
 
+    source_host = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Source IP or FQDN of the requesting Infinity node",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

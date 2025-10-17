@@ -82,22 +82,55 @@ def maybe_basic_auth_protected(view_func):
     return _wrapped
 
 def _log_request(rule, request, response=None, is_override=False, override_response=None):
-    """Save request/response info to DB."""
-    PolicyRequestLog.objects.create(
+    """Log inbound policy requests."""
+    from .models import PolicyRequestLog
+
+    client_ip = request.META.get("REMOTE_ADDR")
+    host = request.META.get("HTTP_HOST", "")
+    source_host = client_ip or host or None
+
+    log_entry = PolicyRequestLog.objects.create(
         rule=rule,
+        request_path=request.path,
         request_method=request.method,
-        request_path=request.get_full_path(),
-        request_body=(request.body.decode("utf-8", errors="ignore") if request.body else None),
-        response_status=(response.status_code if response else 200),
-        response_body=(
-            response.text
-            if response
-            else json.dumps(override_response or {"status": "success", "action": "continue"})
+        request_body=request.body.decode("utf-8", errors="ignore") if request.body else "",
+        response_body=json.dumps(
+            override_response if is_override else getattr(response, "text", ""),
+            ensure_ascii=False,
         ),
+        response_status=getattr(response, "status_code", None),
         is_override=is_override,
-        call_direction=request.GET.get("call_direction"),
-        protocol=request.GET.get("protocol"),
+        source_host=source_host,
     )
+
+
+    return log_entry
+
+@maybe_protected
+@require_http_methods(["GET"])
+def export_logs_txt(request):
+    """
+    Export PolicyRequestLog entries to a plain .log text file.
+    Each line includes timestamp, rule, method, path, status, and source host.
+    """
+    response = HttpResponse(content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="policy_logs.log"'
+
+    logs = PolicyRequestLog.objects.select_related("rule").order_by("-created_at")
+
+    for log in logs:
+        rule_name = log.rule.name if log.rule else "N/A"
+        line = (
+            f"[{log.created_at.strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"{log.request_method} {log.request_path} "
+            f"({rule_name}) "
+            f"status={log.response_status} "
+            f"override={log.is_override} "
+            f"source={log.source_host or 'unknown'}\n"
+        )
+        response.write(line)
+
+    return response
 
 
 # -----------------------------
@@ -762,30 +795,49 @@ def log_list(request):
     rule_id = request.GET.get("rule")
     start_datetime = request.GET.get("start_datetime")
     end_datetime = request.GET.get("end_datetime")
+    source_host = request.GET.get("source_host")  # 👈 new filter
 
     protocols = request.GET.getlist("protocols")
     call_directions = request.GET.getlist("call_directions")
 
+    # --- Apply filters ---
     if local_alias:
         logs = logs.filter(request_path__icontains=local_alias)
+
     if rule_id:
         logs = logs.filter(rule_id=rule_id)
+
     if protocols:
         logs = logs.filter(protocol__in=protocols)
+
     if call_directions:
         logs = logs.filter(call_direction__in=call_directions)
+
+    if source_host:
+        logs = logs.filter(source_host__icontains=source_host)
+
     if start_datetime:
         try:
             start_dt = datetime.fromisoformat(start_datetime)
             logs = logs.filter(created_at__gte=start_dt)
         except ValueError:
             pass
+
     if end_datetime:
         try:
             end_dt = datetime.fromisoformat(end_datetime)
             logs = logs.filter(created_at__lte=end_dt)
         except ValueError:
             pass
+
+    # --- Distinct list of sources for dropdown ---
+    distinct_sources = (
+        PolicyRequestLog.objects.exclude(source_host__isnull=True)
+        .exclude(source_host__exact="")
+        .values_list("source_host", flat=True)
+        .distinct()
+        .order_by("source_host")
+    )
 
     paginator = Paginator(logs, 50)
     page_number = request.GET.get("page")
@@ -796,6 +848,7 @@ def log_list(request):
         "rules": PolicyProxyRule.objects.all(),
         "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
         "call_direction_choices": PolicyProxyRule.CALL_DIRECTION_CHOICES,
+        "distinct_sources": distinct_sources,  # 👈 added
         "filters": {
             "local_alias": local_alias or "",
             "rule": rule_id or "",
@@ -803,5 +856,7 @@ def log_list(request):
             "call_directions": call_directions,
             "start_datetime": start_datetime or "",
             "end_datetime": end_datetime or "",
+            "source_host": source_host or "",  # 👈 added
         }
     })
+

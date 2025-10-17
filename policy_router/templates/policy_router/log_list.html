@@ -3,13 +3,18 @@
 {% block title %}Logs{% endblock %}
 {% block content %}
 
-<h2>Policy Request Logs</h2>
-
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Policy Request Logs</h2>
+  <a href="{% url 'policy_router:export_logs_txt' %}" class="btn btn-outline-primary">
+    ⬇ Download Logs
+  </a>
+</div>
 <form method="get" class="row g-3 mb-4">
   <div class="col-md-3">
     <label class="form-label">Filter by Local Alias</label>
     <input type="text" class="form-control" name="local_alias" value="{{ filters.local_alias }}">
   </div>
+
   <div class="col-md-3">
     <label class="form-label">Rule</label>
     <select name="rule" class="form-select">
@@ -21,13 +26,22 @@
       {% endfor %}
     </select>
   </div>
+
+  <div class="col-md-3">
+    <label class="form-label">Source (Infinity Node)</label>
+    <select name="source_host" class="form-select">
+      <option value="">-- All --</option>
+      {% for src in distinct_sources %}
+        <option value="{{ src }}" {% if filters.source_host == src %}selected{% endif %}>{{ src }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
   <div class="col-md-3">
     <label class="form-label">Protocols</label>
     <select name="protocols" class="form-select" multiple>
       {% for key, label in protocol_choices %}
-        <option value="{{ key }}" {% if key in filters.protocols %}selected{% endif %}>
-          {{ label }}
-        </option>
+        <option value="{{ key }}" {% if key in filters.protocols %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
   </div>
@@ -36,32 +50,33 @@
     <label class="form-label">Call Directions</label>
     <select name="call_directions" class="form-select" multiple>
       {% for key, label in call_direction_choices %}
-        <option value="{{ key }}" {% if key in filters.call_directions %}selected{% endif %}>
-          {{ label }}
-        </option>
+        <option value="{{ key }}" {% if key in filters.call_directions %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
   </div>
+
   <div class="col-md-3">
     <label class="form-label">Start (UTC)</label>
     <input type="datetime-local" class="form-control" name="start_datetime" value="{{ filters.start_datetime }}">
   </div>
+
   <div class="col-md-3">
     <label class="form-label">End (UTC)</label>
     <input type="datetime-local" class="form-control" name="end_datetime" value="{{ filters.end_datetime }}">
   </div>
+
   <div class="col-12">
     <button type="submit" class="btn btn-primary">Filter</button>
     <a href="{% url 'policy_router:log_list' %}" class="btn btn-secondary">Clear</a>
   </div>
 </form>
 
-
 <div class="table-responsive">
   <table class="table table-striped table-hover table-bordered">
     <thead class="table-dark">
       <tr>
         <th>Timestamp (UTC)</th>
+        <th>Source</th>
         <th>Rule</th>
         <th>Request Path</th>
         <th>Method</th>
@@ -75,6 +90,17 @@
       {% for log in page_obj %}
       <tr {% if log.is_override %}class="table-warning"{% endif %}>
         <td>{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</td>
+
+        <td>
+          {% if log.source_host %}
+            <a href="?source_host={{ log.source_host }}" class="text-decoration-none">
+              <span class="badge bg-info text-dark">{{ log.source_host }}</span>
+            </a>
+          {% else %}
+            <span class="text-muted">N/A</span>
+          {% endif %}
+        </td>
+
         <td>
           {% if log.rule %}
             {{ log.rule.name|highlight:filters.local_alias }}
@@ -82,8 +108,11 @@
             <span class="text-muted">N/A</span>
           {% endif %}
         </td>
+
         <td><pre>{{ log.request_path|highlight:filters.local_alias }}</pre></td>
+
         <td><span class="badge bg-info">{{ log.request_method }}</span></td>
+
         <td>
           {% if log.response_status|default:0 >= 400 %}
             <span class="badge bg-danger">{{ log.response_status }}</span>
@@ -91,6 +120,7 @@
             <span class="badge bg-success">{{ log.response_status }}</span>
           {% endif %}
         </td>
+
         <td>
           {% if log.is_override %}
             <span class="badge bg-warning text-dark">Override</span>
@@ -109,14 +139,10 @@
               <script>
                 (function(){
                   try {
-                    const raw = JSON.parse(
-                      document.getElementById("{{ rid }}").textContent
-                    );
+                    const raw = JSON.parse(document.getElementById("{{ rid }}").textContent);
                     document.getElementById("pretty_request_{{ log.id }}").textContent =
-                      JSON.stringify(raw, null, 2);  // pretty print
-                  } catch (e) {
-                    // Fallback (original content with highlighting) is already displayed
-                  }
+                      JSON.stringify(raw, null, 2);
+                  } catch (e) {}
                 })();
               </script>
             {% endwith %}
@@ -133,34 +159,20 @@
               <script>
                 (function(){
                   try {
-                    const raw = JSON.parse(
-                      document.getElementById("{{ rid }}").textContent
-                    );
-
+                    const raw = JSON.parse(document.getElementById("{{ rid }}").textContent);
                     function syntaxHighlight(json) {
-                      if (typeof json != 'string') {
-                        json = JSON.stringify(json, null, 2);
-                      }
+                      if (typeof json != 'string') json = JSON.stringify(json, null, 2);
                       json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-                        let cls = 'number';
-                        if (/^"/.test(match)) {
-                          if (/:$/.test(match)) {
-                            cls = 'key';
-                          } else {
-                            cls = 'string';
-                          }
-                        } else if (/true|false/.test(match)) {
-                          cls = 'boolean';
-                        } else if (/null/.test(match)) {
-                          cls = 'null';
-                        }
-                        return '<span class="' + cls + '">' + match + '</span>';
-                      });
+                      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+                        match => {
+                          let cls = 'number';
+                          if (/^"/.test(match)) cls = /:$/.test(match) ? 'key' : 'string';
+                          else if (/true|false/.test(match)) cls = 'boolean';
+                          else if (/null/.test(match)) cls = 'null';
+                          return '<span class="' + cls + '">' + match + '</span>';
+                        });
                     }
-
                     document.getElementById("pretty_{{ log.id }}").innerHTML = syntaxHighlight(raw);
-
                   } catch (e) {
                     document.getElementById("pretty_{{ log.id }}").textContent = "{{ log.response_body|escapejs }}";
                   }
