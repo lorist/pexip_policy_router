@@ -21,3 +21,5 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
+
+ENABLE_POLICY_AUTH = False     # Diable Basic Auth for policy endpoints
