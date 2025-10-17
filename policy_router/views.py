@@ -111,9 +111,9 @@ def manage_rules_view(request):
 @maybe_protected
 @require_http_methods(["GET"])
 def export_rules_csv(request):
-    """Download all PolicyProxyRule entries as a CSV file."""
+    """Export all rules to CSV."""
     response = HttpResponse(content_type="text/csv")
-    response["Content-Disposition"] = "attachment; filename=policy_rules.csv"
+    response["Content-Disposition"] = 'attachment; filename="policy_rules.csv"'
 
     writer = csv.writer(response)
     writer.writerow([
@@ -121,18 +121,36 @@ def export_rules_csv(request):
         "regex",
         "priority",
         "is_active",
+        "protocols",
+        "call_directions",
+        "source_match",
         "service_target_url",
         "participant_target_url",
+        "basic_auth_username",
+        "basic_auth_password",
+        "always_continue_service",
+        "override_service_response",
+        "always_continue_participant",
+        "override_participant_response",
     ])
 
     for rule in PolicyProxyRule.objects.all().order_by("priority"):
         writer.writerow([
-            smart_str(rule.name),
-            smart_str(rule.regex),
-            rule.priority or 0,
-            "True" if rule.is_active else "False",
+            smart_str(rule.name or ""),
+            smart_str(rule.regex or ""),
+            smart_str(rule.priority or ""),
+            smart_str(rule.is_active),
+            json.dumps(rule.protocols or []),
+            json.dumps(rule.call_directions or []),
+            smart_str(rule.source_match or ""),
             smart_str(rule.service_target_url or ""),
             smart_str(rule.participant_target_url or ""),
+            smart_str(rule.basic_auth_username or ""),
+            smart_str(rule.basic_auth_password or ""),
+            smart_str(rule.always_continue_service),
+            json.dumps(rule.override_service_response or {}),
+            smart_str(rule.always_continue_participant),
+            json.dumps(rule.override_participant_response or {}),
         ])
 
     return response
@@ -145,36 +163,49 @@ def export_rules_csv(request):
 @maybe_protected
 @require_http_methods(["POST"])
 def import_rules_csv(request):
-    """Upload a CSV file and import/update PolicyProxyRule entries."""
-    csv_file = request.FILES.get("file")
-    if not csv_file:
-        return JsonResponse({"error": "Missing 'file' in request."}, status=400)
+    """Import rules from uploaded CSV."""
+    file = request.FILES.get("csv_file")
+    if not file:
+        messages.error(request, "No CSV file uploaded.")
+        return redirect("policy_router:rule_list")
 
-    csv_data = io.TextIOWrapper(csv_file.file, encoding="utf-8")
-    reader = csv.DictReader(csv_data)
-    created, updated = 0, 0
+    decoded_file = file.read().decode("utf-8")
+    reader = csv.DictReader(io.StringIO(decoded_file))
+    count = 0
 
     for row in reader:
-        rule, created_flag = PolicyProxyRule.objects.update_or_create(
-            name=row["name"],
-            defaults={
-                "regex": row.get("regex", ""),
-                "priority": int(row.get("priority", 0)),
-                "is_active": row.get("is_active", "True").lower() in ("true", "1"),
-                "service_target_url": row.get("service_target_url", ""),
-                "participant_target_url": row.get("participant_target_url", ""),
-            },
-        )
-        if created_flag:
-            created += 1
-        else:
-            updated += 1
+        if not row.get("name") or not row.get("regex"):
+            continue  # skip empty rows
 
-    return JsonResponse({
-        "message": f"Import complete: {created} created, {updated} updated.",
-        "created": created,
-        "updated": updated,
-    })
+        try:
+            protocols = json.loads(row.get("protocols", "[]"))
+            call_directions = json.loads(row.get("call_directions", "[]"))
+            override_service = json.loads(row.get("override_service_response", "{}"))
+            override_participant = json.loads(row.get("override_participant_response", "{}"))
+        except json.JSONDecodeError:
+            protocols, call_directions, override_service, override_participant = [], [], {}, {}
+
+        PolicyProxyRule.objects.create(
+            name=row.get("name"),
+            regex=row.get("regex"),
+            priority=int(row.get("priority", 0)),
+            is_active=row.get("is_active", "True") in ["True", "true", "1"],
+            protocols=protocols,
+            call_directions=call_directions,
+            source_match=row.get("source_match") or None,
+            service_target_url=row.get("service_target_url") or None,
+            participant_target_url=row.get("participant_target_url") or None,
+            basic_auth_username=row.get("basic_auth_username") or None,
+            basic_auth_password=row.get("basic_auth_password") or None,
+            always_continue_service=row.get("always_continue_service", "False") in ["True", "true", "1"],
+            override_service_response=override_service,
+            always_continue_participant=row.get("always_continue_participant", "False") in ["True", "true", "1"],
+            override_participant_response=override_participant,
+        )
+        count += 1
+
+    messages.success(request, f"Successfully imported {count} rules.")
+    return redirect("policy_router:rule_list")
 
 
 
@@ -294,6 +325,9 @@ def proxy_service_policy(request):
     req_call_direction = request.GET.get("call_direction")
 
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
+    # Capture client origin
+    client_ip = request.META.get("REMOTE_ADDR")
+    client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
 
     for rule in rules:
         try:
@@ -312,6 +346,16 @@ def proxy_service_policy(request):
                     response_json = rule.override_service_response or {"status": "success", "action": "continue"}
                     _log_request(rule, request, None, is_override=True, override_response=response_json)
                     return JsonResponse(response_json)
+
+                if rule.source_match:
+                    src = rule.source_match.strip().lower()
+                    if not (
+                        client_ip == src
+                        or client_host == src
+                        or src in (client_ip or "")
+                        or src in (client_host or "")
+                    ):
+                        continue  # skip rule, source doesn't match
 
                 if rule.service_target_url:
                     upstream = rule.service_target_url.rstrip("/")
@@ -349,7 +393,8 @@ def proxy_participant_policy(request):
     local_alias = request.GET.get("local_alias")
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
-
+    client_ip = request.META.get("REMOTE_ADDR")
+    client_host = request.get_host().split(":")[0] if "HTTP_HOST" in request.META else None
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
@@ -360,7 +405,15 @@ def proxy_participant_policy(request):
                     continue
                 if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
-                
+                if rule.source_match:
+                    src = rule.source_match.strip().lower()
+                    if not (
+                        client_ip == src
+                        or client_host == src
+                        or src in (client_ip or "")
+                        or src in (client_host or "")
+                    ):
+                        continue  # skip rule, source doesn't match
                 # --- Track usage ---
                 _increment_rule_usage(rule)  
 
@@ -405,15 +458,14 @@ def proxy_participant_policy(request):
 @maybe_protected
 def rule_list(request):
     import re
-    from collections import defaultdict
     import random
-    from django.db.models import Q
 
     # --- Base queryset + filters ---
     rules = PolicyProxyRule.objects.all().order_by("priority", "id")
 
     protocols = request.GET.getlist("protocols")
     call_directions = request.GET.getlist("call_directions")
+    source = request.GET.get("source_match")  # ✅ new filter
 
     if protocols:
         q = Q()
@@ -427,22 +479,34 @@ def rule_list(request):
             q |= Q(call_directions__icontains=cd)
         rules = rules.filter(q)
 
-    rules = list(rules)
+    if source:
+        if source == "__any__":
+            rules = rules.filter(Q(source_match__isnull=True) | Q(source_match__exact=""))
+        else:
+            rules = rules.filter(source_match__iexact=source)
 
-    # --- Improved Semantic Duplicate Detection ---
+    # --- Collect distinct source values for dropdown ---
+    distinct_sources = (
+        PolicyProxyRule.objects.exclude(source_match__isnull=True)
+        .exclude(source_match__exact="")
+        .values_list("source_match", flat=True)
+        .distinct()
+    )
+
+    # --- Duplicate detection (unchanged) ---
     base_samples = [
-        "room-01", "room-12", "room-99", "room-100", "vmr-01", "vmr-22", "conference-07",
-        "judge-1", "guest-88", "chair-02", "defence-07", "teams-123", "mssip-321",
-        "api-test", "webrtc-session", "sip-user", "h323-alias", "rtmp-stream",
-        "health-55", "justice-42", "courtroom-3", "court-12",
+        "room-1", "room-12", "room-123", "room-9999",
+        "vmr-01", "vmr-999", "test", "room-", "conference-01",
+        "chair-1", "defence-99", "guest-1234",
     ]
-    # Add some randomized samples for extra coverage
     for i in range(10):
         base_samples.append(f"room-{random.randint(0,9999)}")
         base_samples.append(f"vmr-{random.randint(0,9999)}")
 
     duplicate_ids = set()
-    duplicate_map = defaultdict(list)
+    duplicate_map = {}
+
+    rules = list(rules)
 
     for i, r1 in enumerate(rules):
         try:
@@ -456,38 +520,33 @@ def rule_list(request):
             except re.error:
                 continue
 
-            # Exact duplicate
-            if r1.regex.strip() == r2.regex.strip():
+            if r1.regex == r2.regex:
                 duplicate_ids.update([r1.id, r2.id])
-                duplicate_map[r1.id].append(f"{r2.name} (identical)")
-                duplicate_map[r2.id].append(f"{r1.name} (identical)")
+                duplicate_map.setdefault(r1.id, set()).add(r2.name)
+                duplicate_map.setdefault(r2.id, set()).add(r1.name)
                 continue
 
-            # Sample-based overlap test
-            overlap_samples = [s for s in base_samples if regex1.search(s) and regex2.search(s)]
-
-            # Only flag if more than 2 overlapping samples
-            if len(overlap_samples) >= 3:
-                duplicate_ids.update([r1.id, r2.id])
-                overlap_preview = ", ".join(overlap_samples[:3])
-                duplicate_map[r1.id].append(
-                    f"{r2.name} (matches: {overlap_preview}{'…' if len(overlap_samples) > 3 else ''})"
-                )
-                duplicate_map[r2.id].append(
-                    f"{r1.name} (matches: {overlap_preview}{'…' if len(overlap_samples) > 3 else ''})"
-                )
+            for sample in base_samples:
+                if regex1.search(sample) and regex2.search(sample):
+                    duplicate_ids.update([r1.id, r2.id])
+                    duplicate_map.setdefault(r1.id, set()).add(r2.name)
+                    duplicate_map.setdefault(r2.id, set()).add(r1.name)
+                    break
 
     return render(request, "policy_router/rule_list.html", {
         "rules": rules,
         "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
         "call_direction_choices": PolicyProxyRule.CALL_DIRECTION_CHOICES,
+        "distinct_sources": distinct_sources,  # ✅ added
         "filters": {
             "protocols": protocols,
             "call_directions": call_directions,
+            "source_match": source,  # ✅ added
         },
         "duplicate_ids": duplicate_ids,
         "duplicate_map": duplicate_map,
     })
+
 
 
 @maybe_protected

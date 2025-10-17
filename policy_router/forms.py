@@ -27,9 +27,11 @@ class PolicyProxyRuleForm(forms.ModelForm):
         fields = [
             "name",
             "regex",
+            "source_match",
             "priority",
             "is_active",
             "protocols",
+            "protocols", "call_directions",
             "call_directions",
             "service_target_url",
             "always_continue_service",
@@ -54,6 +56,9 @@ class PolicyProxyRuleForm(forms.ModelForm):
             ),
             "override_participant_response": forms.Textarea(
                 attrs={"rows": 4, "placeholder": '{"status": "success", "action": "continue"}'}
+            ),
+            "source_match": forms.TextInput(attrs={
+                "placeholder": "e.g. 10.0.0.14 or mgr1.example.com"}
             ),
         }
 

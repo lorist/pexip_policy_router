@@ -51,6 +51,14 @@ class PolicyProxyRule(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    source_match = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Optional source IP or FQDN of the Infinity node. "
+                  "Leave blank to match any source."
+    )
+
     def clean(self):
         """Ensure DB consistency and detect duplicate or overlapping regex patterns."""
         import re
