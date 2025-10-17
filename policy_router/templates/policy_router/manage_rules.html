@@ -9,8 +9,12 @@
   <div class="card mb-4 shadow-sm">
     <div class="card-body">
       <h5 class="card-title">Export Rules</h5>
-      <p class="card-text">Download all current PolicyProxyRule entries as a CSV file.</p>
-      <a href="{% url 'policy_router:export_rules_csv' %}" class="btn btn-primary">⬇ Download CSV</a>
+      <p class="card-text">
+        Download all current <code>PolicyProxyRule</code> entries as a CSV file.
+      </p>
+      <a href="{% url 'policy_router:export_rules_csv' %}" class="btn btn-primary">
+        ⬇ Download CSV
+      </a>
     </div>
   </div>
 
@@ -19,18 +23,26 @@
     <div class="card-body">
       <h5 class="card-title">Import Rules</h5>
       <p class="card-text">
-        Upload a CSV file to create or update PolicyProxyRule entries.
+        Upload a CSV file to create or update <code>PolicyProxyRule</code> entries.<br>
         Existing rules with the same <code>name</code> will be updated.
       </p>
 
       <form id="csv-import-form" enctype="multipart/form-data">
         {% csrf_token %}
-        <div class="mb-3">
-          <input type="file" name="file" id="csvFile" class="form-control" accept=".csv" required>
+        <div class="row g-2 align-items-center">
+          <div class="col-md-8">
+            <input type="file" name="file" id="csvFile" class="form-control" accept=".csv" required>
+          </div>
+          <div class="col-md-2 form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="allow_update" id="allowUpdate" checked>
+            <label class="form-check-label" for="allowUpdate">Update existing</label>
+          </div>
+          <div class="col-md-2">
+            <button type="submit" id="uploadBtn" class="btn btn-success w-100">
+              ⬆ Upload & Import
+            </button>
+          </div>
         </div>
-        <button type="submit" class="btn btn-success">
-          ⬆ Upload & Import
-        </button>
       </form>
 
       <div id="import-status" class="mt-3"></div>
@@ -44,22 +56,37 @@ document.getElementById("csv-import-form").addEventListener("submit", async (e) 
 
   const form = e.target;
   const status = document.getElementById("import-status");
+  const btn = document.getElementById("uploadBtn");
+
+  // Visual feedback
   status.innerHTML = "⏳ Uploading...";
+  btn.disabled = true;
+  btn.innerHTML = "⏳ Uploading...";
 
-  const formData = new FormData(form);
-  const response = await fetch("{% url 'policy_router:import_rules_csv' %}", {
-    method: "POST",
-    headers: {
-      "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value
-    },
-    body: formData
-  });
+  try {
+    const formData = new FormData(form);
+    const response = await fetch("{% url 'policy_router:import_rules_csv' %}", {
+      method: "POST",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      body: formData
+    });
 
-  const result = await response.json();
-  if (response.ok) {
-    status.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-  } else {
-    status.innerHTML = `<div class="alert alert-danger">${result.error || 'Import failed.'}</div>`;
+    const result = await response.json();
+
+    if (response.ok) {
+      status.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+      // auto-redirect after short delay
+      setTimeout(() => {
+        window.location.href = "{% url 'policy_router:rule_list' %}";
+      }, 2000);
+    } else {
+      status.innerHTML = `<div class="alert alert-danger">${result.error || 'Import failed.'}</div>`;
+    }
+  } catch (err) {
+    status.innerHTML = `<div class="alert alert-danger">⚠️ Network error: ${err}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "⬆ Upload & Import";
   }
 });
 </script>

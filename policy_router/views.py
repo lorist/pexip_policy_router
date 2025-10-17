@@ -163,51 +163,93 @@ def export_rules_csv(request):
 @maybe_protected
 @require_http_methods(["POST"])
 def import_rules_csv(request):
-    """Import rules from uploaded CSV."""
-    file = request.FILES.get("csv_file")
+    """
+    Import or update rules from a CSV upload.
+    Returns JSON if requested via AJAX, else redirects.
+    """
+    def json_response(data, status=200):
+        return JsonResponse(data, status=status)
+
+    file = request.FILES.get("file")
     if not file:
-        messages.error(request, "No CSV file uploaded.")
+        msg = "No CSV file uploaded."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return json_response({"error": msg}, status=400)
+        messages.error(request, msg)
         return redirect("policy_router:rule_list")
 
-    decoded_file = file.read().decode("utf-8")
-    reader = csv.DictReader(io.StringIO(decoded_file))
-    count = 0
+    try:
+        decoded_file = file.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(decoded_file))
+    except Exception as e:
+        msg = f"Could not read CSV: {e}"
+        logger.exception(msg)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return json_response({"error": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("policy_router:rule_list")
 
-    for row in reader:
-        if not row.get("name") or not row.get("regex"):
-            continue  # skip empty rows
+    allow_update = True  # toggle later if you add checkbox
+    created, updated, failed = 0, 0, 0
 
-        try:
-            protocols = json.loads(row.get("protocols", "[]"))
-            call_directions = json.loads(row.get("call_directions", "[]"))
-            override_service = json.loads(row.get("override_service_response", "{}"))
-            override_participant = json.loads(row.get("override_participant_response", "{}"))
-        except json.JSONDecodeError:
-            protocols, call_directions, override_service, override_participant = [], [], {}, {}
+    with transaction.atomic():
+        for i, row in enumerate(reader, start=1):
+            name = row.get("name")
+            regex = row.get("regex")
+            if not name or not regex:
+                failed += 1
+                continue
 
-        PolicyProxyRule.objects.create(
-            name=row.get("name"),
-            regex=row.get("regex"),
-            priority=int(row.get("priority", 0)),
-            is_active=row.get("is_active", "True") in ["True", "true", "1"],
-            protocols=protocols,
-            call_directions=call_directions,
-            source_match=row.get("source_match") or None,
-            service_target_url=row.get("service_target_url") or None,
-            participant_target_url=row.get("participant_target_url") or None,
-            basic_auth_username=row.get("basic_auth_username") or None,
-            basic_auth_password=row.get("basic_auth_password") or None,
-            always_continue_service=row.get("always_continue_service", "False") in ["True", "true", "1"],
-            override_service_response=override_service,
-            always_continue_participant=row.get("always_continue_participant", "False") in ["True", "true", "1"],
-            override_participant_response=override_participant,
-        )
-        count += 1
+            def parse_json(v, default):
+                try:
+                    return json.loads(v) if v else default
+                except Exception:
+                    return default
 
-    messages.success(request, f"Successfully imported {count} rules.")
+            try:
+                protocols = parse_json(row.get("protocols"), [])
+                call_dirs = parse_json(row.get("call_directions"), [])
+                override_service = parse_json(row.get("override_service_response"), {})
+                override_part = parse_json(row.get("override_participant_response"), {})
+
+                defaults = {
+                    "regex": regex,
+                    "priority": int(row.get("priority", 0) or 0),
+                    "is_active": str(row.get("is_active", "True")).lower() in ("true","1","yes"),
+                    "protocols": protocols,
+                    "call_directions": call_dirs,
+                    "source_match": row.get("source_match") or None,
+                    "service_target_url": row.get("service_target_url") or None,
+                    "participant_target_url": row.get("participant_target_url") or None,
+                    "basic_auth_username": row.get("basic_auth_username") or None,
+                    "basic_auth_password": row.get("basic_auth_password") or None,
+                    "always_continue_service": str(row.get("always_continue_service","False")).lower() in ("true","1","yes"),
+                    "override_service_response": override_service,
+                    "always_continue_participant": str(row.get("always_continue_participant","False")).lower() in ("true","1","yes"),
+                    "override_participant_response": override_part,
+                }
+
+                obj, created_flag = PolicyProxyRule.objects.update_or_create(name=name, defaults=defaults)
+                if created_flag:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception as e:
+                failed += 1
+                logger.exception(f"Row {i} import failed: {e}")
+                continue
+
+    message = f"✅ Import complete — {created} created, {updated} updated"
+    if failed:
+        message += f", {failed} skipped."
+
+    # --- AJAX response ---
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return json_response({"message": message})
+
+    # --- Fallback for normal POST ---
+    messages.success(request, message)
     return redirect("policy_router:rule_list")
-
-
 
 # -----------------------------
 # Rule Tester
