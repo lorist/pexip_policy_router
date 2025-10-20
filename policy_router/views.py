@@ -98,7 +98,7 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
             override_response if is_override else getattr(response, "text", ""),
             ensure_ascii=False,
         ),
-        response_status=getattr(response, "status_code", None),
+        response_status=getattr(response, "status_code", 200),
         is_override=is_override,
         source_host=source_host,
     )

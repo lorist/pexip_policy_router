@@ -22,4 +22,4 @@ DATABASES = {
     }
 }
 
-ENABLE_POLICY_AUTH = False     # Diable Basic Auth for policy endpoints
+ENABLE_POLICY_AUTH = False     # Disable Basic Auth for policy endpoints
