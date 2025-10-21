@@ -89,22 +89,29 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
     host = request.META.get("HTTP_HOST", "")
     source_host = client_ip or host or None
 
-    log_entry = PolicyRequestLog.objects.create(
+    # Capture request params for GET requests
+    req_params = request.GET.dict() if request.method == "GET" else {}
+    if is_override:
+        resp_content = override_response 
+    elif response is not None:
+        try:
+            resp_content = response.json()
+        except Exception:
+            resp_content = {"raw": getattr(response, "text", "")} 
+    else:
+        resp_content = None
+
+    return PolicyRequestLog.objects.create(
         rule=rule,
         request_path=request.path,
         request_method=request.method,
-        request_body=request.body.decode("utf-8", errors="ignore") if request.body else "",
-        response_body=json.dumps(
-            override_response if is_override else getattr(response, "text", ""),
-            ensure_ascii=False,
-        ),
+        request_params=req_params,
+        response_body=resp_content,
         response_status=getattr(response, "status_code", 200),
         is_override=is_override,
         source_host=source_host,
     )
 
-
-    return log_entry
 
 @maybe_protected
 @require_http_methods(["GET"])
