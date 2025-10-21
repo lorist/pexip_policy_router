@@ -28,8 +28,6 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-
-
 ROOT_URLCONF = "pexip_policy_router.urls"
 
 TEMPLATES = [
@@ -74,3 +72,38 @@ LOGOUT_REDIRECT_URL = '/login/'
 # Authentication toggles
 ENABLE_WEB_AUTH = True        # Require login for web views (/rules)
 ENABLE_POLICY_AUTH = True     # Require Basic Auth for policy endpoints
+
+# Logging config - https://docs.djangoproject.com/en/5.2/topics/logging/
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False, # Important: Set to False to merge with Django's default loggers
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        '': { # All Modules
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False, # Prevent messages from propagating to parent loggers
+        },
+    }
+}
