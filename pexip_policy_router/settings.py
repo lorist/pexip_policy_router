@@ -79,11 +79,11 @@ LOGGING = {
     'disable_existing_loggers': False, # Important: Set to False to merge with Django's default loggers
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'format': '{levelname} {asctime} {module} {funcName} {process:d} {thread:d} {message}',
             'style': '{',
         },
         'simple': {
-            'format': '{levelname} {message}',
+            'format': '{levelname}: {module}.{funcName}: {message}',
             'style': '{',
         },
     },
