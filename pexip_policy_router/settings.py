@@ -71,7 +71,7 @@ LOGOUT_REDIRECT_URL = '/login/'
 
 # Authentication toggles
 ENABLE_WEB_AUTH = True        # Require login for web views (/rules)
-ENABLE_POLICY_AUTH = True     # Require Basic Auth for policy endpoints
+ENABLE_POLICY_AUTH = False     # Require Basic Auth for policy endpoints
 
 # Logging config - https://docs.djangoproject.com/en/5.2/topics/logging/
 LOGGING = {
