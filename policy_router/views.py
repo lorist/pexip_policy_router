@@ -423,7 +423,15 @@ def proxy_service_policy(request):
                     continue
                 if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
-                # if rule.source_match: - missing from here but is after overide check !!!
+                if rule.source_match:
+                    src = rule.source_match.strip().lower()
+                    if not (
+                        client_ip == src
+                        or client_host == src
+                        or src in (client_ip or "")
+                        or src in (client_host or "")
+                    ):
+                        continue  # skip rule, source doesn't match
 
                 # --- Track usage ---
                 _increment_rule_usage(rule) 
@@ -434,16 +442,6 @@ def proxy_service_policy(request):
                     logger.info(f"Rule is an overide, returning: {response_json}")
                     _log_request(rule, request, None, is_override=True, override_response=response_json)
                     return JsonResponse(response_json)
-
-                if rule.source_match:
-                    src = rule.source_match.strip().lower()
-                    if not (
-                        client_ip == src
-                        or client_host == src
-                        or src in (client_ip or "")
-                        or src in (client_host or "")
-                    ):
-                        continue  # skip rule, source doesn't match
 
                 if rule.service_target_url:
                     upstream = rule.service_target_url.rstrip("/")
