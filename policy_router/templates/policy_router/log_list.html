@@ -9,6 +9,7 @@
     ⬇ Download Logs
   </a>
 </div>
+
 <form method="get" class="row g-3 mb-4">
   <div class="col-md-3">
     <label class="form-label">Filter by Local Alias</label>
@@ -82,7 +83,7 @@
         <th>Method</th>
         <th>Status</th>
         <th>Override</th>
-        <th>Request Body</th>
+        <th>Request Parameters</th>
         <th>Response Body</th>
       </tr>
     </thead>
@@ -129,23 +130,20 @@
           {% endif %}
         </td>
 
+        <!-- Updated column -->
         <td>
-          {% if log.request_body %}
-            {% with rid="request_json_"|add:log.id|stringformat:"s" %}
-              {{ log.request_body|json_script:rid }}
-              <pre class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;">
-                <code id="pretty_request_{{ log.id }}">{{ log.request_body|highlight:filters.local_alias|escape }}</code>
-              </pre>
-              <script>
-                (function(){
-                  try {
-                    const raw = JSON.parse(document.getElementById("{{ rid }}").textContent);
-                    document.getElementById("pretty_request_{{ log.id }}").textContent =
-                      JSON.stringify(raw, null, 2);
-                  } catch (e) {}
-                })();
-              </script>
-            {% endwith %}
+          {% if log.request_params %}
+            <pre class="json-viewer" id="params_{{ log.id }}"></pre>
+            <script>
+              (function() {
+                try {
+                  const params = JSON.parse(`{{ log.request_params|escapejs }}`);
+                  document.getElementById("params_{{ log.id }}").textContent = JSON.stringify(params, null, 2);
+                } catch (e) {
+                  document.getElementById("params_{{ log.id }}").textContent = "{{ log.request_params|escapejs }}";
+                }
+              })();
+            </script>
           {% else %}
             <span class="text-muted">N/A</span>
           {% endif %}

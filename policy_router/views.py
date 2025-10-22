@@ -4,6 +4,7 @@ import json
 import csv
 import io
 import base64
+import logging
 from collections import defaultdict
 from datetime import datetime
 from django.conf import settings
@@ -25,6 +26,9 @@ from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
 from django.db import transaction
+
+# Setup console logging
+logger = logging.getLogger(__name__)
 
 def _increment_rule_usage(rule: PolicyProxyRule):
     """Increment usage metrics for a rule."""
@@ -82,29 +86,36 @@ def maybe_basic_auth_protected(view_func):
     return _wrapped
 
 def _log_request(rule, request, response=None, is_override=False, override_response=None):
-    """Log inbound policy requests."""
+    """Log inbound policy requests to DB"""
     from .models import PolicyRequestLog
 
     client_ip = request.META.get("REMOTE_ADDR")
     host = request.META.get("HTTP_HOST", "")
     source_host = client_ip or host or None
 
-    log_entry = PolicyRequestLog.objects.create(
+    # Capture request params for GET requests
+    req_params = request.GET.dict() if request.method == "GET" else {}
+    if is_override:
+        resp_content = override_response 
+    elif response is not None:
+        try:
+            resp_content = response.json()
+        except Exception:
+            resp_content = {"raw": getattr(response, "text", "")} 
+    else:
+        resp_content = None
+
+    return PolicyRequestLog.objects.create(
         rule=rule,
         request_path=request.path,
         request_method=request.method,
-        request_body=request.body.decode("utf-8", errors="ignore") if request.body else "",
-        response_body=json.dumps(
-            override_response if is_override else getattr(response, "text", ""),
-            ensure_ascii=False,
-        ),
+        request_params=req_params,
+        response_body=resp_content,
         response_status=getattr(response, "status_code", 200),
         is_override=is_override,
         source_host=source_host,
     )
 
-
-    return log_entry
 
 @maybe_protected
 @require_http_methods(["GET"])
@@ -131,7 +142,6 @@ def export_logs_txt(request):
         response.write(line)
 
     return response
-
 
 # -----------------------------
 # CSV EXPORT
@@ -187,7 +197,6 @@ def export_rules_csv(request):
         ])
 
     return response
-
 
 # -----------------------------
 # CSV IMPORT
@@ -392,17 +401,19 @@ def rule_tester(request):
 @maybe_basic_auth_protected
 def proxy_service_policy(request):
     """Proxy for /policy/v1/service/configuration (always GET)."""
+    logger.info("Recieved a service/configuration request")
+    logger.debug(f"Incoming headers: {request.headers._store} ")
+
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
+    # Collect rule processing info
     local_alias = request.GET.get("local_alias")
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
-
-    rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
-    # Capture client origin
     client_ip = request.META.get("REMOTE_ADDR")
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
+    rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
@@ -412,13 +423,15 @@ def proxy_service_policy(request):
                     continue
                 if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                     continue
-                
+                # if rule.source_match: - missing from here but is after overide check !!!
+
                 # --- Track usage ---
                 _increment_rule_usage(rule) 
 
                 # --- Override check ---
                 if rule.always_continue_service:
                     response_json = rule.override_service_response or {"status": "success", "action": "continue"}
+                    logger.info(f"Rule is an overide, returning: {response_json}")
                     _log_request(rule, request, None, is_override=True, override_response=response_json)
                     return JsonResponse(response_json)
 
@@ -434,6 +447,7 @@ def proxy_service_policy(request):
 
                 if rule.service_target_url:
                     upstream = rule.service_target_url.rstrip("/")
+                    logger.info(f"Sending to upstream URL: {upstream}")
                     try:
                         resp = httpx.get(
                             upstream + request.path,
@@ -447,24 +461,38 @@ def proxy_service_policy(request):
                             timeout=10.0,
                         )
                         _log_request(rule, request, resp)
+                        
                         try:
+                            logger.info(f"Upstream returned status code {resp.status_code}")
+                            logger.debug(f"Response content: {resp.content}")
                             return JsonResponse(resp.json(), status=resp.status_code)
+                        
                         except ValueError:
+                            logger.error(ValueError)
                             return JsonResponse({"raw": resp.text}, status=resp.status_code)
+                    
                     except httpx.RequestError as e:
+                        logger.error(httpx.RequestError)
                         return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+        
         except re.error:
+            logger.error(re.error)
             continue
-
+    
+    logger.warning(f"No matching rule, returning 404")
     return JsonResponse({"error": "No matching rule"}, status=404)
 
 @csrf_exempt
 @maybe_basic_auth_protected
 def proxy_participant_policy(request):
     """Proxy for /policy/v1/participant/properties (always GET)."""
+    logger.info("Recieved a participant/properties request")
+    logger.debug(f"Incoming headers: {request.headers._store} ")
+
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
+    # Collect rule processing info
     local_alias = request.GET.get("local_alias")
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
@@ -489,17 +517,20 @@ def proxy_participant_policy(request):
                         or src in (client_host or "")
                     ):
                         continue  # skip rule, source doesn't match
+
                 # --- Track usage ---
                 _increment_rule_usage(rule)  
 
                 # --- Override check ---
                 if rule.always_continue_participant:
                     response_json = rule.override_participant_response or {"status": "success", "action": "continue"}
+                    logger.info(f"Rule is an overide, returning: {response_json}")
                     _log_request(rule, request, None, is_override=True, override_response=response_json)
                     return JsonResponse(response_json)
 
                 if rule.participant_target_url:
                     upstream = rule.participant_target_url.rstrip("/")
+                    logger.info(f"Sending to upstream URL: {upstream}")
                     try:
                         resp = httpx.get(
                             upstream + request.path,
@@ -515,17 +546,24 @@ def proxy_participant_policy(request):
                         _log_request(rule, request, resp)
 
                         try:
+                            logger.info(f"Upstream returned status code {resp.status_code}")
+                            logger.debug(f"Response content: {resp.content}")
                             return JsonResponse(resp.json(), status=resp.status_code)
+                        
                         except ValueError:
+                            logger.error(ValueError)
                             return JsonResponse({"raw": resp.text}, status=resp.status_code)
+                        
                     except httpx.RequestError as e:
+                        logger.error(httpx.RequestError)
                         return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+                    
         except re.error:
+            logger.error(re.error)
             continue
-
+    
+    logger.warning(f"No matching rule, returning 404")
     return JsonResponse({"error": "No matching rule"}, status=404)
-
-
 
 # -----------------------------
 # Rules Management
@@ -621,8 +659,6 @@ def rule_list(request):
         "duplicate_ids": duplicate_ids,
         "duplicate_map": duplicate_map,
     })
-
-
 
 @maybe_protected
 def rule_create(request):
@@ -859,4 +895,3 @@ def log_list(request):
             "source_host": source_host or "",  # 👈 added
         }
     })
-

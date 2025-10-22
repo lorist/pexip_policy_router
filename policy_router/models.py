@@ -135,7 +135,7 @@ class PolicyRequestLog(models.Model):
     rule = models.ForeignKey(PolicyProxyRule, on_delete=models.SET_NULL, null=True, blank=True)
     request_method = models.CharField(max_length=10)
     request_path = models.TextField()
-    request_body = models.TextField(null=True, blank=True)
+    request_params = models.JSONField(null=True, blank=True)
     response_status = models.IntegerField()
     response_body = models.TextField(null=True, blank=True)
     is_override = models.BooleanField(default=False)
