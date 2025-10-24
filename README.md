@@ -153,3 +153,13 @@ ENABLE_POLICY_AUTH = True     # Require Basic Auth for /policy endpoints
 Add the same credentials to your **Infinity External Policy Server** configuration.
 
 ---
+
+## Tests
+
+Run Tests fir rules:
+```python
+pytest -v policy_router/tests/test_participant_policy_matching.py
+pytest -v policy_router/tests/test_service_policy_matching.py
+pytest -v policy_router/tests/test_policy_integration.py
+```
+
