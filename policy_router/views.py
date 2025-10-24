@@ -37,6 +37,9 @@ def _increment_rule_usage(rule: PolicyProxyRule):
     rule.save(update_fields=["match_count", "last_matched_at"])
 
 def _get_client_ip(request):
+    """check for X-Client-Ip and return if present"""
+    if request.headers["X-Client-Ip"]:
+        return request.headers["X-Client-Ip"]
     """Return the true client IP, considering X-Forwarded-For."""
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
     if forwarded:
