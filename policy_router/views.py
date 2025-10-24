@@ -36,6 +36,14 @@ def _increment_rule_usage(rule: PolicyProxyRule):
     rule.last_matched_at = timezone.now()
     rule.save(update_fields=["match_count", "last_matched_at"])
 
+def _get_client_ip(request):
+    """Return the true client IP, considering X-Forwarded-For."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded:
+        # Take the first IP in the chain
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -89,7 +97,7 @@ def _log_request(rule, request, response=None, is_override=False, override_respo
     """Log inbound policy requests to DB"""
     from .models import PolicyRequestLog
 
-    client_ip = request.META.get("REMOTE_ADDR")
+    client_ip = _get_client_ip(request)
     host = request.META.get("HTTP_HOST", "")
     source_host = client_ip or host or None
 
@@ -401,167 +409,184 @@ def rule_tester(request):
 @maybe_basic_auth_protected
 def proxy_service_policy(request):
     """Proxy for /policy/v1/service/configuration (always GET)."""
-    logger.info("Recieved a service/configuration request")
+    logger.info("Received a service/configuration request")
     logger.debug(f"Incoming headers: {request.headers._store} ")
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    # Collect rule processing info
     local_alias = request.GET.get("local_alias")
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
-    client_ip = request.META.get("REMOTE_ADDR")
+    client_ip = _get_client_ip(request)
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            if re.search(rule.regex, local_alias or ""):
-                # Check protocol/call_direction match if specified
-                if rule.protocols and req_protocol and req_protocol not in rule.protocols:
-                    continue
-                if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
-                    continue
-                if rule.source_match:
-                    src = rule.source_match.strip().lower()
-                    if not (
-                        client_ip == src
-                        or client_host == src
-                        or src in (client_ip or "")
-                        or src in (client_host or "")
-                    ):
-                        continue  # skip rule, source doesn't match
+            # Match alias first
+            if not re.search(rule.regex, local_alias or ""):
+                continue
 
-                # --- Track usage ---
-                _increment_rule_usage(rule) 
+            # Match protocol and call_direction
+            if rule.protocols and req_protocol and req_protocol not in rule.protocols:
+                continue
+            if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
+                continue
 
-                # --- Override check ---
-                if rule.always_continue_service:
-                    response_json = rule.override_service_response or {"status": "success", "action": "continue"}
-                    logger.info(f"Rule is an overide, returning: {response_json}")
-                    _log_request(rule, request, None, is_override=True, override_response=response_json)
-                    return JsonResponse(response_json)
+            # Match source IP/host (NEW: safely skip instead of blocking)
+            if rule.source_match:
+                src = rule.source_match.strip().lower()
+                if not (
+                    client_ip == src
+                    or client_host == src
+                    or (src in (client_ip or ""))
+                    or (src in (client_host or ""))
+                ):
+                    continue  # Only skip, do NOT break/return
 
-                if rule.service_target_url:
-                    upstream = rule.service_target_url.rstrip("/")
-                    logger.info(f"Sending to upstream URL: {upstream}")
+            # --- Reached this point: full match ---
+            _increment_rule_usage(rule)
+
+            # --- Override check ---
+            if rule.always_continue_service:
+                response_json = rule.override_service_response or {
+                    "status": "success",
+                    "action": "continue",
+                }
+                logger.info(f"Rule is an override, returning: {response_json}")
+                _log_request(rule, request, None, is_override=True, override_response=response_json)
+                return JsonResponse(response_json)
+
+            # --- Upstream proxy ---
+            if rule.service_target_url:
+                upstream = rule.service_target_url.rstrip("/")
+                logger.info(f"Sending to upstream URL: {upstream}")
+                try:
+                    resp = httpx.get(
+                        upstream + request.path,
+                        params=request.GET,
+                        headers=_build_safe_headers(request),
+                        auth=(
+                            (rule.basic_auth_username, rule.basic_auth_password)
+                            if rule.basic_auth_username and rule.basic_auth_password
+                            else None
+                        ),
+                        timeout=10.0,
+                    )
+                    _log_request(rule, request, resp)
+
                     try:
-                        resp = httpx.get(
-                            upstream + request.path,
-                            params=request.GET,
-                            headers=_build_safe_headers(request),
-                            auth=(
-                                (rule.basic_auth_username, rule.basic_auth_password)
-                                if rule.basic_auth_username and rule.basic_auth_password
-                                else None
-                            ),
-                            timeout=10.0,
-                        )
-                        _log_request(rule, request, resp)
-                        
-                        try:
-                            logger.info(f"Upstream returned status code {resp.status_code}")
-                            logger.debug(f"Response content: {resp.content}")
-                            return JsonResponse(resp.json(), status=resp.status_code)
-                        
-                        except ValueError:
-                            logger.error(ValueError)
-                            return JsonResponse({"raw": resp.text}, status=resp.status_code)
-                    
-                    except httpx.RequestError as e:
-                        logger.error(httpx.RequestError)
-                        return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
-        
-        except re.error:
-            logger.error(re.error)
+                        logger.info(f"Upstream returned status code {resp.status_code}")
+                        logger.debug(f"Response content: {resp.content}")
+                        return JsonResponse(resp.json(), status=resp.status_code)
+
+                    except ValueError:
+                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
+
+                except httpx.RequestError as e:
+                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+
+        except re.error as e:
+            logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
-    
-    logger.warning(f"No matching rule, returning 404")
+
+    # Only reached if no matching rule after full loop
+    logger.warning("No matching rule, returning 404")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 @csrf_exempt
 @maybe_basic_auth_protected
 def proxy_participant_policy(request):
     """Proxy for /policy/v1/participant/properties (always GET)."""
-    logger.info("Recieved a participant/properties request")
+    logger.info("Received a participant/properties request")
     logger.debug(f"Incoming headers: {request.headers._store} ")
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    # Collect rule processing info
     local_alias = request.GET.get("local_alias")
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
-    client_ip = request.META.get("REMOTE_ADDR")
+    client_ip = _get_client_ip(request)
     client_host = request.get_host().split(":")[0] if "HTTP_HOST" in request.META else None
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            if re.search(rule.regex, local_alias or ""):
-                # Check protocol/call_direction match if specified
-                if rule.protocols and req_protocol and req_protocol not in rule.protocols:
-                    continue
-                if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
-                    continue
-                if rule.source_match:
-                    src = rule.source_match.strip().lower()
-                    if not (
-                        client_ip == src
-                        or client_host == src
-                        or src in (client_ip or "")
-                        or src in (client_host or "")
-                    ):
-                        continue  # skip rule, source doesn't match
+            # Match alias first
+            if not re.search(rule.regex, local_alias or ""):
+                continue
 
-                # --- Track usage ---
-                _increment_rule_usage(rule)  
+            # Match protocol and call_direction
+            if rule.protocols and req_protocol and req_protocol not in rule.protocols:
+                continue
+            if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
+                continue
 
-                # --- Override check ---
-                if rule.always_continue_participant:
-                    response_json = rule.override_participant_response or {"status": "success", "action": "continue"}
-                    logger.info(f"Rule is an overide, returning: {response_json}")
-                    _log_request(rule, request, None, is_override=True, override_response=response_json)
-                    return JsonResponse(response_json)
+            # Match source IP/host (NEW)
+            if rule.source_match:
+                src = rule.source_match.strip().lower()
+                if not (
+                    client_ip == src
+                    or client_host == src
+                    or (src in (client_ip or ""))
+                    or (src in (client_host or ""))
+                ):
+                    continue  # Skip gracefully
 
-                if rule.participant_target_url:
-                    upstream = rule.participant_target_url.rstrip("/")
-                    logger.info(f"Sending to upstream URL: {upstream}")
+            # --- Reached this point: full match ---
+            _increment_rule_usage(rule)
+
+            # --- Override check ---
+            if rule.always_continue_participant:
+                response_json = rule.override_participant_response or {
+                    "status": "success",
+                    "action": "continue",
+                }
+                logger.info(f"Rule is an override, returning: {response_json}")
+                _log_request(rule, request, None, is_override=True, override_response=response_json)
+                return JsonResponse(response_json)
+
+            # --- Upstream proxy ---
+            if rule.participant_target_url:
+                upstream = rule.participant_target_url.rstrip("/")
+                logger.info(f"Sending to upstream URL: {upstream}")
+                try:
+                    resp = httpx.get(
+                        upstream + request.path,
+                        params=request.GET,
+                        headers=_build_safe_headers(request),
+                        auth=(
+                            (rule.basic_auth_username, rule.basic_auth_password)
+                            if rule.basic_auth_username and rule.basic_auth_password
+                            else None
+                        ),
+                        timeout=10.0,
+                    )
+                    _log_request(rule, request, resp)
+
                     try:
-                        resp = httpx.get(
-                            upstream + request.path,
-                            params=request.GET,
-                            headers=_build_safe_headers(request),
-                            auth=(
-                                (rule.basic_auth_username, rule.basic_auth_password)
-                                if rule.basic_auth_username and rule.basic_auth_password
-                                else None
-                            ),
-                            timeout=10.0,
-                        )
-                        _log_request(rule, request, resp)
+                        logger.info(f"Upstream returned status code {resp.status_code}")
+                        logger.debug(f"Response content: {resp.content}")
+                        return JsonResponse(resp.json(), status=resp.status_code)
 
-                        try:
-                            logger.info(f"Upstream returned status code {resp.status_code}")
-                            logger.debug(f"Response content: {resp.content}")
-                            return JsonResponse(resp.json(), status=resp.status_code)
-                        
-                        except ValueError:
-                            logger.error(ValueError)
-                            return JsonResponse({"raw": resp.text}, status=resp.status_code)
-                        
-                    except httpx.RequestError as e:
-                        logger.error(httpx.RequestError)
-                        return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
-                    
-        except re.error:
-            logger.error(re.error)
+                    except ValueError:
+                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
+
+                except httpx.RequestError as e:
+                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+
+        except re.error as e:
+            logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
-    
-    logger.warning(f"No matching rule, returning 404")
+
+    logger.warning("No matching rule, returning 404")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 # -----------------------------
 # Rules Management

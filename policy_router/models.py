@@ -2,6 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 import json
 import re
+import random
 
 class PolicyProxyRule(models.Model):
     PROTOCOL_CHOICES = [
@@ -117,17 +118,59 @@ class PolicyProxyRule(models.Model):
                     overlapping.append(other.name)
                     break
 
+       # --- Detect overlaps or duplicates with identical source_match ---
         if overlapping:
-            raise ValidationError({
-                "regex": (
-                    f"This pattern may overlap or duplicate existing rule(s): "
-                    f"{', '.join(set(overlapping))}"
+            conflicts = []
+            for other in type(self).objects.exclude(pk=self.pk).filter(is_active=True):
+                try:
+                    other_regex = re.compile(other.regex)
+                except re.error:
+                    continue
+
+                # only check real overlaps
+                if this_regex.pattern != other_regex.pattern:
+                    continue
+
+                # --- Detect true duplicates ---
+                same_source = (
+                    (not self.source_match and not other.source_match)
+                    or (self.source_match == other.source_match)
                 )
-            })
+                same_scope = (
+                    (self.always_continue_service and other.always_continue_service)
+                    or (self.always_continue_participant and other.always_continue_participant)
+                )
+                same_priority = self.priority == other.priority
+
+                # Only treat as duplicate if all 3 match (regex overlap, same source, same scope, same priority)
+                if same_source and same_scope and same_priority:
+                    overlapping.append(other.name)
+                    continue
 
 
-        def __str__(self):
-            return self.name
+            if conflicts:
+                raise ValidationError({
+                    "regex": (
+                        f"This pattern duplicates existing rule(s) with identical source: "
+                        f"{', '.join(set(conflicts))}"
+                    )
+                })
+
+
+
+
+        if self.source_match:
+            sm = self.source_match.strip().lower()
+            if sm in ("", "none", "null"):
+                self.source_match = None
+            else:
+                self.source_match = sm
+        else:
+            self.source_match = None
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 
