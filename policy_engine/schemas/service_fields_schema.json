@@ -1,0 +1,88 @@
+{
+  "conference": {
+    "meta": {
+      "label": "Conference Service",
+      "description": "A standard Virtual Meeting Room service type."
+    },
+    "fields": [
+      {"key": "name", "type": "string", "required": true, "label": "Service Name", "description": "The name of the service. Commonly use the local_alias."},
+      {"key": "service_tag", "type": "string", "required": true, "label": "Service Tag", "description": "A unique identifier to track usage of this service."},
+      {"key": "service_type", "type": "select", "required": true, "choices": ["conference", "lecture"], "default": "conference", "label": "Service Type"},
+      {"key": "allow_guests", "type": "boolean", "default": false, "label": "Allow Guests"},
+      {"key": "automatic_participants", "type": "list", "label": "Automatic Participants"},
+      {"key": "breakout_rooms", "type": "boolean", "default": false, "label": "Enable Breakout Rooms"},
+      {"key": "bypass_proxy", "type": "boolean", "default": false, "label": "Bypass Proxy"},
+      {"key": "call_type", "type": "select", "choices": ["video", "video-only", "audio"], "default": "video", "label": "Call Type"},
+      {"key": "crypto_mode", "type": "select", "choices": [null, "besteffort", "on", "off"], "label": "Crypto Mode"},
+      {"key": "description", "type": "string", "label": "Description"},
+      {"key": "denoise_enabled", "type": "boolean", "default": false, "label": "Enable Denoise"},
+      {"key": "direct_media", "type": "select", "choices": ["best_effort", "always", "never"], "default": "never", "label": "Direct Media"},
+      {"key": "direct_media_notification_duration", "type": "integer", "default": 0, "label": "Direct Media Notification Duration"},
+      {"key": "enable_chat", "type": "select", "choices": ["default", "yes", "no"], "default": "default", "label": "Enable Chat"},
+      {"key": "enable_active_speaker_indication", "type": "boolean", "default": false, "label": "Active Speaker Indication"},
+      {"key": "enable_overlay_text", "type": "boolean", "default": false, "label": "Overlay Participant Names"},
+      {"key": "guest_pin", "type": "string", "label": "Guest PIN"},
+      {"key": "guests_can_present", "type": "boolean", "default": true, "label": "Guests Can Present"},
+      {"key": "guest_identity_provider_group", "type": "string", "label": "Guest Identity Provider Group"},
+      {"key": "host_identity_provider_group", "type": "string", "label": "Host Identity Provider Group"},
+      {"key": "ivr_theme_name", "type": "string", "label": "Theme Name"},
+      {"key": "live_captions_language", "type": "string", "label": "Captions Language"},
+      {"key": "local_display_name", "type": "string", "label": "Local Display Name"},
+      {"key": "locked", "type": "boolean", "default": false, "label": "Locked on Creation"},
+      {"key": "max_callrate_in", "type": "integer", "label": "Max Callrate In (bps)"},
+      {"key": "max_callrate_out", "type": "integer", "label": "Max Callrate Out (bps)"},
+      {"key": "max_pixels_per_second", "type": "select", "choices": [null, "sd", "hd", "fullhd"], "label": "Max Call Quality"},
+      {"key": "mute_all_guests", "type": "boolean", "default": false, "label": "Mute Guests on Join"},
+      {"key": "non_idp_participants", "type": "select", "choices": ["disallow_all", "allow_if_trusted"], "default": "disallow_all", "label": "Non-IDP Participants"},
+      {"key": "participant_limit", "type": "integer", "label": "Participant Limit"},
+      {"key": "pin", "type": "string", "label": "Host PIN"},
+      {"key": "pinning_config", "type": "string", "label": "Pinning Configuration"},
+      {"key": "prefer_ipv6", "type": "select", "choices": ["default", "yes", "no"], "default": "default", "label": "Prefer IPv6"},
+      {"key": "primary_owner_email_address", "type": "string", "label": "Owner Email"},
+      {"key": "softmute_enabled", "type": "boolean", "default": false, "label": "Enable Softmute"},
+      {"key": "source_language", "type": "string", "label": "Source Language"},
+      {"key": "view", "type": "select", "label": "Conference Layout", "default": "one_main_seven_pips", "choices": [
+        "one_main_zero_pips", "one_main_seven_pips", "one_main_twentyone_pips",
+        "two_mains_twentyone_pips", "one_main_thirtythree_pips", "four_mains_zero_pips",
+        "nine_mains_zero_pips", "sixteen_mains_zero_pips", "twentyfive_mains_zero_pips",
+        "five_mains_seven_pips", "one_main_one_pip", "one_main_nine_around",
+        "one_main_twelve_around", "two_mains_eight_around", "teams"
+      ]}
+    ]
+  },
+
+  "lecture": {
+    "meta": {
+      "label": "Lecture Service",
+      "description": "A Virtual Auditorium service type."
+    },
+    "fields": [
+      {"key": "name", "type": "string", "required": true, "label": "Service Name"},
+      {"key": "service_tag", "type": "string", "required": true, "label": "Service Tag"},
+      {"key": "service_type", "type": "select", "required": true, "choices": ["lecture", "conference"], "default": "lecture"},
+      {"key": "allow_guests", "type": "boolean", "default": false, "label": "Allow Guests"},
+      {"key": "guest_pin", "type": "string", "label": "Guest PIN"},
+      {"key": "pin", "type": "string", "label": "Host PIN"},
+      {"key": "force_presenter_into_main", "type": "boolean", "default": false, "label": "Force Presenter into Main"},
+      {"key": "guest_view", "type": "select", "default": "one_main_seven_pips", "label": "Guest View", "choices": [
+        "one_main_zero_pips", "one_main_seven_pips", "one_main_twentyone_pips",
+        "two_mains_twentyone_pips", "one_main_thirtythree_pips", "four_mains_zero_pips",
+        "nine_mains_zero_pips", "sixteen_mains_zero_pips", "twentyfive_mains_zero_pips",
+        "five_mains_seven_pips", "one_main_one_pip", "one_main_nine_around",
+        "one_main_twelve_around", "two_mains_eight_around"
+      ]},
+      {"key": "host_view", "type": "select", "default": "one_main_seven_pips", "label": "Host View", "choices": [
+        "one_main_zero_pips", "one_main_seven_pips", "one_main_twentyone_pips",
+        "two_mains_twentyone_pips", "one_main_thirtythree_pips", "four_mains_zero_pips",
+        "nine_mains_zero_pips", "sixteen_mains_zero_pips", "twentyfive_mains_zero_pips",
+        "five_mains_seven_pips", "one_main_one_pip", "one_main_nine_around",
+        "one_main_twelve_around", "two_mains_eight_around", "teams"
+      ]},
+      {"key": "guests_can_present", "type": "boolean", "default": true, "label": "Guests Can Present"},
+      {"key": "guests_can_see_guests", "type": "select", "choices": ["no_hosts", "always", "never"], "default": "no_hosts", "label": "Guests Can See Other Guests"},
+      {"key": "locked", "type": "boolean", "default": false, "label": "Locked on Creation"},
+      {"key": "mute_all_guests", "type": "boolean", "default": false, "label": "Mute Guests on Join"},
+      {"key": "description", "type": "string", "label": "Description"}
+    ]
+  }
+}

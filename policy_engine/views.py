@@ -1,5 +1,5 @@
-import json
-import logging
+import json, logging, os
+from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
@@ -7,9 +7,20 @@ from django.views.decorators.http import require_http_methods
 from policy_router.models import PolicyProxyRule
 from policy_router.views import maybe_protected
 from .models import PolicyLogic, PolicyDecisionLog
+from django.utils.safestring import mark_safe
 
 logger = logging.getLogger(__name__)
 
+# -----------------------------
+# Load Service Field Schema
+# -----------------------------
+schema_path = os.path.join(settings.BASE_DIR, "policy_engine/schemas/service_fields_schema.json")
+try:
+    with open(schema_path) as f:
+        SERVICE_SCHEMA = json.load(f)
+except FileNotFoundError:
+    logger.error("❌ Service schema not found at %s", schema_path)
+    SERVICE_SCHEMA = {}
 
 # -----------------------------
 # Advanced Logic Editor
@@ -23,7 +34,6 @@ def logic_editor(request, rule_id):
     # ----------------------------
     # Field choices by policy type
     # ----------------------------
-
     SERVICE_FIELDS = [
         ("call_direction", "Call Direction"),
         ("protocol", "Protocol"),
@@ -93,15 +103,57 @@ def logic_editor(request, rule_id):
                 value = request.POST.get(f"{key}_val_{i}")
                 if param and operator:
                     conditions.append({"parameter": param, "operator": operator, "value": value})
-
             instance.conditions = {"match_mode": "all", "conditions": conditions}
 
-            # parse response JSON
-            try:
-                instance.response = json.loads(request.POST.get(f"{key}_response", "{}") or "{}")
-            except json.JSONDecodeError as e:
-                messages.error(request, f"{key.title()} response JSON invalid: {e}")
-                overall_errors = True
+            # ----------------------------
+            # Handle service logic response
+            # ----------------------------
+            if key == "service":
+                # Extract dynamic form data
+                service_type = request.POST.get("service_type", "").strip()
+                result_fields = {}
+
+                if service_type in SERVICE_SCHEMA:
+                    for field in SERVICE_SCHEMA[service_type]["fields"]:
+                        key_name = field["key"]
+                        value = request.POST.get(key_name)
+                        if value not in (None, ""):
+                            # Convert booleans and ints
+                            if field["type"] == "boolean":
+                                result_fields[key_name] = value.lower() == "true"
+                            elif field["type"] == "integer":
+                                try:
+                                    result_fields[key_name] = int(value)
+                                except ValueError:
+                                    result_fields[key_name] = value
+                            elif field["type"] == "list":
+                                try:
+                                    result_fields[key_name] = json.loads(value)
+                                except json.JSONDecodeError:
+                                    result_fields[key_name] = [v.strip() for v in value.split(",") if v.strip()]
+                            else:
+                                result_fields[key_name] = value
+
+                    # Build the standard service response JSON
+                    instance.response = {
+                        "status": "success",
+                        "action": "continue",
+                        "result": result_fields
+                    }
+                else:
+                    # fallback: raw JSON if user manually entered it
+                    try:
+                        instance.response = json.loads(request.POST.get(f"{key}_response", "{}"))
+                    except json.JSONDecodeError as e:
+                        messages.error(request, f"Service response JSON invalid: {e}")
+                        overall_errors = True
+            else:
+                # participant logic: still parse manually from textarea
+                try:
+                    instance.response = json.loads(request.POST.get(f"{key}_response", "{}") or "{}")
+                except json.JSONDecodeError as e:
+                    messages.error(request, f"{key.title()} response JSON invalid: {e}")
+                    overall_errors = True
 
             instance.save()
 
@@ -115,13 +167,23 @@ def logic_editor(request, rule_id):
     # ----------------------------
     # Render the editor form
     # ----------------------------
+    # context = {
+    #     "rule": rule,
+    #     "participant": participant_logic,
+    #     "service": service_logic,
+    #     "participant_fields": json.dumps(PARTICIPANT_FIELDS),
+    #     "service_fields": json.dumps(SERVICE_FIELDS),
+    #     "operator_choices": json.dumps(OPERATOR_CHOICES),
+    #      "service_schema": mark_safe(json.dumps(SERVICE_SCHEMA, indent=2)),
+    # }
     context = {
         "rule": rule,
         "participant": participant_logic,
         "service": service_logic,
-        "participant_fields": json.dumps(PARTICIPANT_FIELDS),
-        "service_fields": json.dumps(SERVICE_FIELDS),
-        "operator_choices": json.dumps(OPERATOR_CHOICES),
+        "participant_fields": PARTICIPANT_FIELDS,
+        "service_fields": SERVICE_FIELDS,
+        "operator_choices": OPERATOR_CHOICES,
+        "service_schema": SERVICE_SCHEMA,
     }
     return render(request, "policy_engine/logic_editor_form.html", context)
 
@@ -132,24 +194,14 @@ def logic_editor(request, rule_id):
 @maybe_protected
 @require_http_methods(["GET"])
 def logic_decision_log_list(request, rule_id):
-    """Show all decision logs for a specific rule."""
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
     logs = PolicyDecisionLog.objects.filter(rule_id=rule_id).order_by("-decided_at")
-
     paginator = Paginator(logs, 50)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-
-    logger.debug(f"Found {logs.count()} decision logs for rule {rule_id}")
-
+    page_obj = paginator.get_page(request.GET.get("page"))
     return render(
         request,
         "policy_engine/logic_decision_logs.html",
-        {
-            "rule": rule,
-            "logs": page_obj,
-            "page_obj": page_obj,
-        },
+        {"rule": rule, "logs": page_obj, "page_obj": page_obj},
     )
 
 
@@ -158,12 +210,9 @@ def logic_decision_log_list(request, rule_id):
 # -----------------------------
 @maybe_protected
 def logic_overview(request):
-    """Show all advanced logic rules across all PolicyProxyRules."""
     logics = (
         PolicyLogic.objects
         .select_related("rule")
         .order_by("rule__priority", "rule__name", "rule_type")
     )
-
-    context = {"logics": logics}
-    return render(request, "policy_engine/logic_overview.html", context)
+    return render(request, "policy_engine/logic_overview.html", {"logics": logics})

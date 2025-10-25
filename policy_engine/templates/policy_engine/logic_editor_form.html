@@ -15,7 +15,7 @@
     </ul>
 
     <div class="tab-content border border-top-0 p-3">
-      <!-- Participant tab -->
+      <!-- PARTICIPANT TAB -->
       <div class="tab-pane fade show active" id="tab-participant">
         <div class="form-check form-switch mb-2">
           <input class="form-check-input" type="checkbox" name="participant_enabled" {% if participant.enabled %}checked{% endif %}>
@@ -36,7 +36,7 @@
         <textarea class="form-control font-monospace" rows="6" name="participant_response">{{ participant.response|safe }}</textarea>
       </div>
 
-      <!-- Service tab -->
+      <!-- SERVICE TAB -->
       <div class="tab-pane fade" id="tab-service">
         <div class="form-check form-switch mb-2">
           <input class="form-check-input" type="checkbox" name="service_enabled" {% if service.enabled %}checked{% endif %}>
@@ -53,8 +53,24 @@
         <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="addCondition('service')">➕ Add Condition</button>
         <input type="hidden" id="service_condition_total" name="service_condition_total" value="0">
 
-        <h5 class="mt-3">Response JSON</h5>
-        <textarea class="form-control font-monospace" rows="6" name="service_response">{{ service.response|safe }}</textarea>
+        <hr class="my-4">
+
+        <h5>Service Configuration Builder</h5>
+        <p class="text-muted">Select a service type and build the valid configuration below.</p>
+
+        <div class="mb-3">
+          <label for="serviceType" class="form-label fw-bold">Service Type</label>
+          <select id="serviceType" name="service_type" class="form-select" required>
+            <option value="">— Select —</option>
+          </select>
+        </div>
+
+        <div id="service-fields" class="border rounded p-3 bg-light"></div>
+
+        <h5 class="mt-3">Response JSON Preview</h5>
+        <pre id="servicePreview" class="bg-dark text-light p-2 rounded small" style="white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{}</pre>
+
+        <textarea id="serviceResponseTextarea" class="form-control font-monospace mt-2" rows="6" name="service_response" hidden>{{ service.response|safe }}</textarea>
       </div>
     </div>
 
@@ -65,66 +81,188 @@
   </form>
 </div>
 
+<!-- Safe JSON embedding for JavaScript -->
+{{ participant_fields|default:"[]"|json_script:"participant-fields" }}
+{{ service_fields|default:"[]"|json_script:"service-fields" }}
+{{ operator_choices|default:"[]"|json_script:"operator-choices" }}
+{{ participant.conditions|default:"{}"|json_script:"preload-participant" }}
+{{ service.conditions|default:"{}"|json_script:"preload-service" }}
+{{ service.response|default:"{}"|json_script:"saved-response" }}
+{{ service_schema|default:"{}"|json_script:"service-schema" }}
+
+
 <script>
-const participantFields = {{ participant_fields|safe }};
-const serviceFields = {{ service_fields|safe }};
-const operatorChoices = {{ operator_choices|safe }};
-
-// Preloaded condition data from the backend
-const preloaded = {
-  participant: {{ participant.conditions|safe|default:"{}" }},
-  service: {{ service.conditions|safe|default:"{}" }}
-};
-
-function addCondition(key, param = "", op = "", val = "") {
-  const container = document.getElementById(`${key}-conditions`);
-  const countEl = document.getElementById(`${key}_condition_total`);
-  const idx = parseInt(countEl.value);
-  countEl.value = idx + 1;
-
-  const fieldOptions = (key === 'participant' ? participantFields : serviceFields)
-    .map(([v, l]) => `<option value="${v}" ${v === param ? 'selected' : ''}>${l}</option>`)
-    .join('');
-  const opOptions = operatorChoices
-    .map(([v, l]) => `<option value="${v}" ${v === op ? 'selected' : ''}>${l}</option>`)
-    .join('');
-
-  const row = document.createElement("div");
-  row.className = "row g-2 align-items-center mb-2";
-  row.innerHTML = `
-    <div class="col-md-4">
-      <select class="form-select" name="${key}_param_${idx}">
-        ${fieldOptions}
-      </select>
-    </div>
-    <div class="col-md-3">
-      <select class="form-select" name="${key}_op_${idx}">
-        ${opOptions}
-      </select>
-    </div>
-    <div class="col-md-4">
-      <input class="form-control" name="${key}_val_${idx}" value="${val || ''}" placeholder="Value">
-    </div>
-    <div class="col-md-1 text-center">
-      <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRow(this)">✖</button>
-    </div>
-  `;
-  container.appendChild(row);
-}
-
-function removeRow(btn) {
-  btn.closest(".row").remove();
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  for (const key of ["participant", "service"]) {
-    const data = preloaded[key];
-    if (data && data.conditions) {
-      data.conditions.forEach(cond => {
-        addCondition(key, cond.parameter, cond.operator, cond.value);
-      });
+document.addEventListener("DOMContentLoaded", () => {
+  // ---------- Safe JSON parser ----------
+  function safeParse(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const txt = el.textContent.trim();
+    if (!txt) return fallback;
+    try {
+      return JSON.parse(txt);
+    } catch (err) {
+      console.warn(`⚠️ Failed to parse ${id}:`, err, txt);
+      return fallback;
     }
   }
+
+  // ---------- Safe loads for every JSON script tag ----------
+  const participantFields = safeParse("participant-fields", []);
+  const serviceFields = safeParse("service-fields", []);
+  const operatorChoices = safeParse("operator-choices", []);
+  const preloaded = {
+    participant: safeParse("preload-participant", {}),
+    service: safeParse("preload-service", {}),
+  };
+  const savedResponse = safeParse("saved-response", {});
+  const SERVICE_SCHEMA = safeParse("service-schema", {});
+
+  console.log("Loaded schema:", SERVICE_SCHEMA);
+
+  // --------------- Condition Builder ----------------
+  window.addCondition = function addCondition(key, param = "", op = "", val = "") {
+    const container = document.getElementById(`${key}-conditions`);
+    const countEl = document.getElementById(`${key}_condition_total`);
+    const idx = parseInt(countEl.value || "0", 10);
+    countEl.value = idx + 1;
+
+    const fieldOptions = (key === "participant" ? participantFields : serviceFields)
+      .map(([v, l]) => `<option value="${v}" ${v === param ? "selected" : ""}>${l}</option>`)
+      .join("");
+
+    const opOptions = operatorChoices
+      .map(([v, l]) => `<option value="${v}" ${v === op ? "selected" : ""}>${l}</option>`)
+      .join("");
+
+    const row = document.createElement("div");
+    row.className = "row g-2 align-items-center mb-2";
+    row.innerHTML = `
+      <div class="col-md-4"><select class="form-select" name="${key}_param_${idx}">${fieldOptions}</select></div>
+      <div class="col-md-3"><select class="form-select" name="${key}_op_${idx}">${opOptions}</select></div>
+      <div class="col-md-4"><input class="form-control" name="${key}_val_${idx}" value="${val || ""}" placeholder="Value"></div>
+      <div class="col-md-1 text-center"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.row').remove()">✖</button></div>`;
+    container.appendChild(row);
+  };
+
+  for (const key of ["participant", "service"]) {
+    const data = preloaded[key];
+    if (data?.conditions) data.conditions.forEach(cond => addCondition(key, cond.parameter, cond.operator, cond.value));
+  }
+
+  // --------------- Service Builder ----------------
+  const serviceTypeSelect = document.getElementById("serviceType");
+  const serviceFieldsDiv = document.getElementById("service-fields");
+  const servicePreview = document.getElementById("servicePreview");
+  const serviceResponseTextarea = document.getElementById("serviceResponseTextarea");
+
+  // Populate dropdown
+  Object.entries(SERVICE_SCHEMA).forEach(([key, schema]) => {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = schema.meta?.label || key;
+    serviceTypeSelect.appendChild(opt);
+  });
+
+  function createField(f, currentType) {
+    const wrap = document.createElement("div");
+    wrap.className = "mb-3";
+    const label = document.createElement("label");
+    label.className = "form-label fw-semibold";
+    label.textContent = f.label || f.key;
+
+    if (["name", "service_tag", "service_type"].includes(f.key) &&
+        (currentType === "conference" || currentType === "lecture")) {
+      label.innerHTML += ' <span class="text-danger">*</span>';
+      f.required = true;
+    }
+
+    wrap.appendChild(label);
+    let input;
+
+    switch (f.type) {
+      case "boolean":
+        input = document.createElement("select");
+        input.className = "form-select";
+        ["true", "false"].forEach(v => {
+          const o = document.createElement("option");
+          o.value = v; o.textContent = v;
+          if (String(f.default) === v) o.selected = true;
+          input.appendChild(o);
+        });
+        break;
+      case "select":
+        input = document.createElement("select");
+        input.className = "form-select";
+        (f.choices || []).forEach(c => {
+          const o = document.createElement("option");
+          o.value = c ?? "";
+          o.textContent = c ?? "(default)";
+          if (f.default && c === f.default) o.selected = true;
+          input.appendChild(o);
+        });
+        break;
+      case "integer":
+        input = document.createElement("input");
+        input.type = "number";
+        input.className = "form-control";
+        if (f.default) input.value = f.default;
+        break;
+      case "list":
+        input = document.createElement("textarea");
+        input.className = "form-control font-monospace";
+        input.rows = 3;
+        input.placeholder = '[ "sip:alice@example.com" ]';
+        break;
+      default:
+        input = document.createElement("input");
+        input.type = "text";
+        input.className = "form-control";
+        if (f.default) input.value = f.default;
+    }
+
+    input.name = f.key;
+    if (f.required) input.required = true;
+    wrap.appendChild(input);
+
+    if (f.description) {
+      const d = document.createElement("small");
+      d.className = "form-text text-muted";
+      d.textContent = f.description;
+      wrap.appendChild(d);
+    }
+
+    return wrap;
+  }
+
+  function updatePreview() {
+    const result = {};
+    serviceFieldsDiv.querySelectorAll("input, select, textarea").forEach(i => {
+      if (i.value !== "") result[i.name] = i.value;
+    });
+    const json = { status: "success", action: "continue", result };
+    const formatted = JSON.stringify(json, null, 2);
+    servicePreview.textContent = formatted;
+    serviceResponseTextarea.value = formatted;
+  }
+
+  serviceTypeSelect.addEventListener("change", e => {
+    const val = e.target.value;
+    serviceFieldsDiv.innerHTML = "";
+
+    if (!val || !SERVICE_SCHEMA[val]) {
+      updatePreview();
+      return;
+    }
+
+    const fields = SERVICE_SCHEMA[val].fields || [];
+    fields.forEach(f => serviceFieldsDiv.appendChild(createField(f, val)));
+    serviceFieldsDiv.querySelectorAll("input, select, textarea").forEach(i =>
+      i.addEventListener("input", updatePreview)
+    );
+    updatePreview();
+  });
 });
 </script>
+
 {% endblock %}

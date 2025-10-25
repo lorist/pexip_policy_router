@@ -60,24 +60,30 @@ def evaluate_policy_logic(rule, rule_type: str, request_data: Dict[str, Any]) ->
         return None
 
     cfg = logic.conditions or {}
-    match_mode = cfg.get('match_mode', 'all')
-    conditions = cfg.get('conditions', [])
+    match_mode = cfg.get("match_mode", "all")
+    conditions = cfg.get("conditions", [])
 
-    results = []
-    for cond in conditions:
-        param = cond.get('parameter')
-        operator = cond.get('operator')
-        expected = cond.get('value')
-        if not param or operator not in SUPPORTED_OPERATORS:
-            results.append(False)
-            continue
-        actual = request_data.get(param)
-        result = _eval_condition(actual, operator, expected)
-        logger.debug(f"Evaluating: {param} {operator} {expected} → {result}")
-        results.append(result)
+    # ✅ Treat "no conditions" as an automatic match
+    if not conditions:
+        logger.info(f"✅ No conditions defined for {rule.name} ({rule_type}); returning default response")
+        response = logic.response
+        matched = True
+    else:
+        results = []
+        for cond in conditions:
+            param = cond.get("parameter")
+            operator = cond.get("operator")
+            expected = cond.get("value")
+            if not param or operator not in SUPPORTED_OPERATORS:
+                results.append(False)
+                continue
+            actual = request_data.get(param)
+            result = _eval_condition(actual, operator, expected)
+            logger.debug(f"Evaluating: {param} {operator} {expected} → {result}")
+            results.append(result)
 
-    matched = (all(results) if match_mode == 'all' else any(results)) if conditions else False
-    response = logic.response if matched else None
+        matched = all(results) if match_mode == "all" else any(results)
+        response = logic.response if matched else None
 
     # Always create a decision log
     context_fields = {
@@ -99,7 +105,7 @@ def evaluate_policy_logic(rule, rule_type: str, request_data: Dict[str, Any]) ->
             **context_fields,
         )
         logger.info(f"DecisionLog created for {rule.name} ({rule_type}) matched={matched}")
-    except:
+    except Exception as e:
         logger.exception(f"Failed to create PolicyDecisionLog for {rule.name}: {e}")
 
     logger.info(f"Advanced logic evaluated for rule={rule.name}, type={rule_type}, matched={matched}")
