@@ -1,69 +1,134 @@
 import json
+import logging
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 from policy_router.models import PolicyProxyRule
-from django.core.paginator import Paginator
-from .models import PolicyLogic, PolicyDecisionLog
 from policy_router.views import maybe_protected
-import logging
+from .models import PolicyLogic, PolicyDecisionLog
 
 logger = logging.getLogger(__name__)
 
+
+# -----------------------------
+# Advanced Logic Editor
+# -----------------------------
 @require_http_methods(["GET", "POST"])
 def logic_editor(request, rule_id):
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
-    participant_logic, _ = PolicyLogic.objects.get_or_create(
-        rule=rule, rule_type=PolicyLogic.PARTICIPANT
-    )
-    service_logic, _ = PolicyLogic.objects.get_or_create(
-        rule=rule, rule_type=PolicyLogic.SERVICE
-    )
+    participant_logic, _ = PolicyLogic.objects.get_or_create(rule=rule, rule_type=PolicyLogic.PARTICIPANT)
+    service_logic, _ = PolicyLogic.objects.get_or_create(rule=rule, rule_type=PolicyLogic.SERVICE)
 
+    # ----------------------------
+    # Field choices by policy type
+    # ----------------------------
+
+    SERVICE_FIELDS = [
+        ("call_direction", "Call Direction"),
+        ("protocol", "Protocol"),
+        ("bandwidth", "Bandwidth"),
+        ("vendor", "Vendor"),
+        ("encryption", "Encryption"),
+        ("registered", "Registered"),
+        ("trigger", "Trigger"),
+        ("remote_display_name", "Remote Display Name"),
+        ("remote_alias", "Remote Alias"),
+        ("remote_address", "Remote Address"),
+        ("remote_port", "Remote Port"),
+        ("call_tag", "Call Tag"),
+        ("idp_uuid", "IDP UUID"),
+        ("has_authenticated_display_name", "Authenticated Display Name"),
+        ("supports_direct_media", "Supports Direct Media"),
+        ("teams_tenant_id", "Teams Tenant ID"),
+        ("location", "Location"),
+        ("node_ip", "Node IP"),
+        ("version_id", "Version ID"),
+        ("pseudo_version_id", "Pseudo Version ID"),
+        ("local_alias", "Local Alias"),
+    ]
+
+    PARTICIPANT_FIELDS = SERVICE_FIELDS + [
+        ("preauthenticated_role", "Preauthenticated Role"),
+        ("bypass_lock", "Bypass Lock"),
+        ("receive_from_audio_mix", "Receive From Audio Mix"),
+        ("display_count", "Display Count"),
+        ("participant_type", "Participant Type"),
+        ("participant_uuid", "Participant UUID"),
+        ("call_uuid", "Call UUID"),
+        ("breakout_uuid", "Breakout UUID"),
+        ("send_to_audio_mixes_mix_name", "Send to Audio Mix Name"),
+        ("send_to_audio_mixes_prominent", "Send to Audio Mix Prominent"),
+        ("unique_service_name", "Unique Service Name"),
+        ("service_name", "Service Name"),
+        ("service_tag", "Service Tag"),
+    ]
+
+    OPERATOR_CHOICES = [
+        ("equals", "equals"),
+        ("not_equals", "not equals"),
+        ("contains", "contains"),
+        ("not_contains", "not contains"),
+        ("startswith", "starts with"),
+        ("endswith", "ends with"),
+    ]
+
+    # ----------------------------
+    # Handle POST
+    # ----------------------------
     if request.method == "POST":
         overall_errors = False
 
         for key, instance in (("participant", participant_logic), ("service", service_logic)):
-            # ✅ checkbox default
             enabled_value = request.POST.get(f"{key}_enabled", "off")
             instance.enabled = enabled_value == "on"
             instance.description = request.POST.get(f"{key}_description", "").strip()
 
-            # local error flag
-            has_error = False
+            # collect conditions
+            conditions = []
+            total = int(request.POST.get(f"{key}_condition_total", "0"))
+            for i in range(total):
+                param = request.POST.get(f"{key}_param_{i}")
+                operator = request.POST.get(f"{key}_op_{i}")
+                value = request.POST.get(f"{key}_val_{i}")
+                if param and operator:
+                    conditions.append({"parameter": param, "operator": operator, "value": value})
 
-            try:
-                instance.conditions = json.loads(request.POST.get(f"{key}_conditions", "{}") or "{}")
-            except json.JSONDecodeError as e:
-                messages.error(request, f"{key.title()} conditions JSON invalid: {e}")
-                has_error = True
+            instance.conditions = {"match_mode": "all", "conditions": conditions}
 
+            # parse response JSON
             try:
                 instance.response = json.loads(request.POST.get(f"{key}_response", "{}") or "{}")
             except json.JSONDecodeError as e:
                 messages.error(request, f"{key.title()} response JSON invalid: {e}")
-                has_error = True
-
-            # ✅ Save even if there was an error parsing JSON
-            if has_error:
                 overall_errors = True
 
-            instance.save()  # Always persist enabled state + description
+            instance.save()
 
         if not overall_errors:
             messages.success(request, "Advanced logic saved.")
         else:
             messages.warning(request, "Saved with some validation errors.")
+
         return redirect("policy_router:rule_list")
 
-    return render(
-        request,
-        "policy_engine/logic_editor.html",
-        {"rule": rule, "participant": participant_logic, "service": service_logic},
-    )
+    # ----------------------------
+    # Render the editor form
+    # ----------------------------
+    context = {
+        "rule": rule,
+        "participant": participant_logic,
+        "service": service_logic,
+        "participant_fields": json.dumps(PARTICIPANT_FIELDS),
+        "service_fields": json.dumps(SERVICE_FIELDS),
+        "operator_choices": json.dumps(OPERATOR_CHOICES),
+    }
+    return render(request, "policy_engine/logic_editor_form.html", context)
 
 
-
+# -----------------------------
+# Decision Log List
+# -----------------------------
 @maybe_protected
 @require_http_methods(["GET"])
 def logic_decision_log_list(request, rule_id):
@@ -75,7 +140,7 @@ def logic_decision_log_list(request, rule_id):
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 
-    logger.debug(f"🪵 Found {logs.count()} decision logs for rule {rule_id}")
+    logger.debug(f"Found {logs.count()} decision logs for rule {rule_id}")
 
     return render(
         request,
@@ -83,10 +148,14 @@ def logic_decision_log_list(request, rule_id):
         {
             "rule": rule,
             "logs": page_obj,
-            "page_obj": page_obj,  # pagination controls
+            "page_obj": page_obj,
         },
     )
 
+
+# -----------------------------
+# Logic Overview Page
+# -----------------------------
 @maybe_protected
 def logic_overview(request):
     """Show all advanced logic rules across all PolicyProxyRules."""
@@ -96,7 +165,5 @@ def logic_overview(request):
         .order_by("rule__priority", "rule__name", "rule_type")
     )
 
-    context = {
-        "logics": logics,
-    }
+    context = {"logics": logics}
     return render(request, "policy_engine/logic_overview.html", context)

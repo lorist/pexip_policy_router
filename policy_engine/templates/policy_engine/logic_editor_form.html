@@ -1,0 +1,130 @@
+{% extends "policy_router/base.html" %}
+{% block content %}
+<div class="container py-3">
+  <h2>Advanced Policy Logic — {{ rule.name }}</h2>
+
+  <form method="post">
+    {% csrf_token %}
+    <ul class="nav nav-tabs">
+      <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-participant">Participant</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-service">Service</a>
+      </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 p-3">
+      <!-- Participant tab -->
+      <div class="tab-pane fade show active" id="tab-participant">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" name="participant_enabled" {% if participant.enabled %}checked{% endif %}>
+          <label class="form-check-label">Enable participant logic</label>
+        </div>
+
+        <div class="mb-2">
+          <label>Description</label>
+          <input type="text" class="form-control" name="participant_description" value="{{ participant.description }}">
+        </div>
+
+        <h5>Conditions</h5>
+        <div id="participant-conditions"></div>
+        <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="addCondition('participant')">➕ Add Condition</button>
+        <input type="hidden" id="participant_condition_total" name="participant_condition_total" value="0">
+
+        <h5 class="mt-3">Response JSON</h5>
+        <textarea class="form-control font-monospace" rows="6" name="participant_response">{{ participant.response|safe }}</textarea>
+      </div>
+
+      <!-- Service tab -->
+      <div class="tab-pane fade" id="tab-service">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" name="service_enabled" {% if service.enabled %}checked{% endif %}>
+          <label class="form-check-label">Enable service logic</label>
+        </div>
+
+        <div class="mb-2">
+          <label>Description</label>
+          <input type="text" class="form-control" name="service_description" value="{{ service.description }}">
+        </div>
+
+        <h5>Conditions</h5>
+        <div id="service-conditions"></div>
+        <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="addCondition('service')">➕ Add Condition</button>
+        <input type="hidden" id="service_condition_total" name="service_condition_total" value="0">
+
+        <h5 class="mt-3">Response JSON</h5>
+        <textarea class="form-control font-monospace" rows="6" name="service_response">{{ service.response|safe }}</textarea>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <button class="btn btn-success">Save</button>
+      <a class="btn btn-outline-secondary" href="{% url 'policy_router:rule_list' %}">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+const participantFields = {{ participant_fields|safe }};
+const serviceFields = {{ service_fields|safe }};
+const operatorChoices = {{ operator_choices|safe }};
+
+// Preloaded condition data from the backend
+const preloaded = {
+  participant: {{ participant.conditions|safe|default:"{}" }},
+  service: {{ service.conditions|safe|default:"{}" }}
+};
+
+function addCondition(key, param = "", op = "", val = "") {
+  const container = document.getElementById(`${key}-conditions`);
+  const countEl = document.getElementById(`${key}_condition_total`);
+  const idx = parseInt(countEl.value);
+  countEl.value = idx + 1;
+
+  const fieldOptions = (key === 'participant' ? participantFields : serviceFields)
+    .map(([v, l]) => `<option value="${v}" ${v === param ? 'selected' : ''}>${l}</option>`)
+    .join('');
+  const opOptions = operatorChoices
+    .map(([v, l]) => `<option value="${v}" ${v === op ? 'selected' : ''}>${l}</option>`)
+    .join('');
+
+  const row = document.createElement("div");
+  row.className = "row g-2 align-items-center mb-2";
+  row.innerHTML = `
+    <div class="col-md-4">
+      <select class="form-select" name="${key}_param_${idx}">
+        ${fieldOptions}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <select class="form-select" name="${key}_op_${idx}">
+        ${opOptions}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <input class="form-control" name="${key}_val_${idx}" value="${val || ''}" placeholder="Value">
+    </div>
+    <div class="col-md-1 text-center">
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRow(this)">✖</button>
+    </div>
+  `;
+  container.appendChild(row);
+}
+
+function removeRow(btn) {
+  btn.closest(".row").remove();
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  for (const key of ["participant", "service"]) {
+    const data = preloaded[key];
+    if (data && data.conditions) {
+      data.conditions.forEach(cond => {
+        addCondition(key, cond.parameter, cond.operator, cond.value);
+      });
+    }
+  }
+});
+</script>
+{% endblock %}
