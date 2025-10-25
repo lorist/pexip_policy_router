@@ -29,6 +29,7 @@ from django.db import transaction
 
 # Setup console logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG) # FUTURE read from ENV VAR
 
 def _increment_rule_usage(rule: PolicyProxyRule):
     """Increment usage metrics for a rule."""
@@ -37,15 +38,10 @@ def _increment_rule_usage(rule: PolicyProxyRule):
     rule.save(update_fields=["match_count", "last_matched_at"])
 
 def _get_client_ip(request):
-    """check for X-Client-Ip and return if present"""
-    if request.headers["X-Client-Ip"]:
-        return request.headers["X-Client-Ip"]
-    """Return the true client IP, considering X-Forwarded-For."""
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded:
-        # Take the first IP in the chain
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "")
+    if (client_ip := request.headers.get("X-Client-Ip")): return client_ip # Return Azure X header as client IP, if exists
+    if (client_ip := request.META.get("HTTP_X_FORWARDED_FOR")): return client_ip # Return META HTTP_X_FORWARDED_FOR  as client IP, if exists
+    if (client_ip := request.META.get("REMOTE_ADDR")): return client_ip # Return standard META REMOTE_ADDR, if exists
+    return None # Default to None if no matches above
 
 # -----------------------------
 # Helpers
@@ -413,7 +409,7 @@ def rule_tester(request):
 def proxy_service_policy(request):
     """Proxy for /policy/v1/service/configuration (always GET)."""
     logger.info("Received a service/configuration request")
-    logger.debug(f"Incoming headers: {request.headers._store} ")
+    logger.debug(f"Incoming headers: {request.headers._store} ")    
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
@@ -422,8 +418,10 @@ def proxy_service_policy(request):
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
     client_ip = _get_client_ip(request)
+    logger.debug(f"Client_ip is {client_ip} ")
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
-
+    logger.debug(f"HTTP Host is {client_host}")
+    
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
@@ -514,8 +512,10 @@ def proxy_participant_policy(request):
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
     client_ip = _get_client_ip(request)
+    logger.debug(f"Client_ip is {client_ip} ")
     client_host = request.get_host().split(":")[0] if "HTTP_HOST" in request.META else None
-
+    logger.debug(f"HTTP Host is {client_host}")
+    
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:

@@ -100,7 +100,7 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
-        '': { # All Modules
+        'policy_router.views': { #  Modules
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False, # Prevent messages from propagating to parent loggers
