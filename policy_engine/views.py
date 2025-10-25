@@ -13,39 +13,56 @@ logger = logging.getLogger(__name__)
 @require_http_methods(["GET", "POST"])
 def logic_editor(request, rule_id):
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
-    participant_logic, _ = PolicyLogic.objects.get_or_create(rule=rule, rule_type=PolicyLogic.PARTICIPANT)
-    service_logic, _ = PolicyLogic.objects.get_or_create(rule=rule, rule_type=PolicyLogic.SERVICE)
+    participant_logic, _ = PolicyLogic.objects.get_or_create(
+        rule=rule, rule_type=PolicyLogic.PARTICIPANT
+    )
+    service_logic, _ = PolicyLogic.objects.get_or_create(
+        rule=rule, rule_type=PolicyLogic.SERVICE
+    )
 
-    if request.method == 'POST':
-        errors = False
+    if request.method == "POST":
+        overall_errors = False
+
         for key, instance in (("participant", participant_logic), ("service", service_logic)):
-            instance.enabled = request.POST.get(f"{key}_enabled") == 'on'
-            instance.description = request.POST.get(f"{key}_description", "")
+            # ✅ checkbox default
+            enabled_value = request.POST.get(f"{key}_enabled", "off")
+            instance.enabled = enabled_value == "on"
+            instance.description = request.POST.get(f"{key}_description", "").strip()
+
+            # local error flag
+            has_error = False
 
             try:
-                instance.conditions = json.loads(request.POST.get(f"{key}_conditions", '{}'))
+                instance.conditions = json.loads(request.POST.get(f"{key}_conditions", "{}") or "{}")
             except json.JSONDecodeError as e:
                 messages.error(request, f"{key.title()} conditions JSON invalid: {e}")
-                errors = True
+                has_error = True
 
             try:
-                instance.response = json.loads(request.POST.get(f"{key}_response", '{}'))
+                instance.response = json.loads(request.POST.get(f"{key}_response", "{}") or "{}")
             except json.JSONDecodeError as e:
                 messages.error(request, f"{key.title()} response JSON invalid: {e}")
-                errors = True
+                has_error = True
 
-            if not errors:
-                instance.save()
+            # ✅ Save even if there was an error parsing JSON
+            if has_error:
+                overall_errors = True
 
-        if not errors:
+            instance.save()  # Always persist enabled state + description
+
+        if not overall_errors:
             messages.success(request, "Advanced logic saved.")
-            return redirect('policy_router:rule_list')
+        else:
+            messages.warning(request, "Saved with some validation errors.")
+        return redirect("policy_router:rule_list")
 
-    return render(request, 'policy_engine/logic_editor.html', {
-        'rule': rule,
-        'participant': participant_logic,
-        'service': service_logic,
-    })
+    return render(
+        request,
+        "policy_engine/logic_editor.html",
+        {"rule": rule, "participant": participant_logic, "service": service_logic},
+    )
+
+
 
 @maybe_protected
 @require_http_methods(["GET"])
