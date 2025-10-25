@@ -1,0 +1,61 @@
+{% extends "policy_router/base.html" %}
+{% block content %}
+<div class="container py-3">
+  <h2>Advanced Logic Overview</h2>
+  <p class="text-muted">All advanced logic rules across all policies.</p>
+
+  {% if logics %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Rule</th>
+          <th>Type</th>
+          <th>Enabled</th>
+          <th>Match Mode</th>
+          <th># Conditions</th>
+          <th>Description</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for logic in logics %}
+        {% with cfg=logic.conditions %}
+        <tr>
+          <td>
+            {{ logic.rule.name }}
+          </td>
+          <td>{{ logic.rule_type|title }}</td>
+          <td>
+            {% if logic.enabled %}
+              <span class="badge bg-success">Yes</span>
+            {% else %}
+              <span class="badge bg-secondary">No</span>
+            {% endif %}
+          </td>
+          <td>{{ cfg.match_mode|default:"all" }}</td>
+          <td>{{ cfg.conditions|length|default:0 }}</td>
+          <td>{{ logic.description|default:"—" }}</td>
+          <td>
+            <a href="{% url 'policy_engine:logic_editor' logic.rule.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
+            <a href="{% url 'policy_engine:logic_decision_logs' logic.rule.id %}" class="btn btn-sm btn-outline-secondary">Logs</a>
+          </td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-muted">No logic rules found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="text-muted">No advanced logic rules configured yet.</p>
+  {% endif %}
+
+  <a class="btn btn-outline-secondary mt-3" href="{% url 'policy_router:rule_list' %}">← Back to Rules</a>
+</div>
+
+<style>
+  table td { vertical-align: middle; }
+</style>
+{% endblock %}

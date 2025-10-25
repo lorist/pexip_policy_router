@@ -69,3 +69,17 @@ def logic_decision_log_list(request, rule_id):
             "page_obj": page_obj,  # pagination controls
         },
     )
+
+@maybe_protected
+def logic_overview(request):
+    """Show all advanced logic rules across all PolicyProxyRules."""
+    logics = (
+        PolicyLogic.objects
+        .select_related("rule")
+        .order_by("rule__priority", "rule__name", "rule_type")
+    )
+
+    context = {
+        "logics": logics,
+    }
+    return render(request, "policy_engine/logic_overview.html", context)
