@@ -417,9 +417,9 @@ def proxy_service_policy(request):
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
     client_ip = _get_client_ip(request)
-    logger.debug(f"Client_ip is {client_ip} ")
+    logger.debug(f"client_ip is: {client_ip}")
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
-    logger.debug(f"HTTP Host is {client_host}")
+    logger.debug(f"HTTP host is: {client_host}")
     
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
@@ -511,9 +511,9 @@ def proxy_participant_policy(request):
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
     client_ip = _get_client_ip(request)
-    logger.debug(f"Client_ip is {client_ip} ")
+    logger.debug(f"client_ip is: {client_ip}")
     client_host = request.get_host().split(":")[0] if "HTTP_HOST" in request.META else None
-    logger.debug(f"HTTP Host is {client_host}")
+    logger.debug(f"HTTP host is: {client_host}")
     
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
