@@ -15,6 +15,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "policy_router",
+    "policy_engine",
     "widget_tweaks",
 ]
 

@@ -1,3 +1,4 @@
+<!-- policy_router/templates/policy_router/rule_form.html -->
 {% extends "policy_router/base.html" %}
 {% block title %}Rule{% endblock %}
 {% block content %}
@@ -158,8 +159,18 @@
         {{ form.is_active }}
         <div class="form-text">Only active rules are evaluated.</div>
       </div>
+      <div class="col-md-6">
+        <div class="form-check mt-4">
+          {{ form.use_advanced_logic }}
+          <label class="form-check-label" for="{{ form.use_advanced_logic.id_for_label }}">
+            {{ form.use_advanced_logic.label }}
+          </label>
+          <div class="form-text">{{ form.use_advanced_logic.help_text }}</div>
+        </div>
+      </div>
     </div>
   </div>
+
   <!-- JSON Editor Modal -->
   <div class="modal fade" id="jsonEditorModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">

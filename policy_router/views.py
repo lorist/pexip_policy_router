@@ -1,10 +1,4 @@
-import re
-import httpx
-import json
-import csv
-import io
-import base64
-import logging
+import re, httpx, json, csv, io, base64, logging
 from collections import defaultdict
 from datetime import datetime
 from django.conf import settings
@@ -26,6 +20,8 @@ from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
 from django.db import transaction
+from policy_engine.engine import evaluate_policy_logic
+from policy_engine.models import PolicyDecisionLog
 
 # Setup console logging
 logger = logging.getLogger(__name__)
@@ -448,7 +444,28 @@ def proxy_service_policy(request):
 
             # --- Reached this point: full match ---
             _increment_rule_usage(rule)
+            
+            # --- Advinced Policy
+            try:
+                # Evaluate advanced service logic if configured
+                request_data = {
+                    **request.GET.dict(),
+                    "client_ip": _get_client_ip(request),
+                    "client_host": request.META.get("HTTP_HOST", ""),
+                    "headers": dict(request.headers),
+                    "path": request.path,
+                    "timestamp": timezone.now().isoformat(),
+                }
+                logger.debug(f"Advanced policy logic input for {rule.name}: {json.dumps(request_data, indent=2)}")
 
+                adv_response = evaluate_policy_logic(rule, "service", request_data)
+                if adv_response:
+                    logger.info(f"✅ Advanced service logic matched for rule {rule.name}")
+                    _log_request(rule, request, None, is_override=True, override_response=adv_response)
+                    return JsonResponse(adv_response)
+            except Exception as e:
+                logger.exception(f"Error evaluating advanced service policy logic for {rule.name}: {e}")
+            
             # --- Override check ---
             if rule.always_continue_service:
                 response_json = rule.override_service_response or {
@@ -541,6 +558,26 @@ def proxy_participant_policy(request):
             # --- Reached this point: full match ---
             _increment_rule_usage(rule)
 
+            # --- Advanced Policy Logic Evaluation ---
+            try:
+                request_data = {
+                    **request.GET.dict(),
+                    "client_ip": _get_client_ip(request),
+                    "client_host": request.META.get("HTTP_HOST", ""),
+                    "headers": dict(request.headers),
+                    "path": request.path,
+                    "timestamp": timezone.now().isoformat(),
+                }
+                logger.debug(f"Advanced policy logic input for {rule.name}: {json.dumps(request_data, indent=2)}")
+
+                adv_response = evaluate_policy_logic(rule, "participant", request_data)
+                if adv_response:
+                    logger.info(f"✅ Advanced participant logic matched for rule {rule.name}")
+                    _log_request(rule, request, None, is_override=True, override_response=adv_response)
+                    return JsonResponse(adv_response)
+            except Exception as e:
+                logger.exception(f"Error evaluating advanced participant policy logic for {rule.name}: {e}")
+
             # --- Override check ---
             if rule.always_continue_participant:
                 response_json = rule.override_participant_response or {
@@ -595,13 +632,14 @@ def proxy_participant_policy(request):
 def rule_list(request):
     import re
     import random
+    from django.db.models import Q
 
     # --- Base queryset + filters ---
     rules = PolicyProxyRule.objects.all().order_by("priority", "id")
 
     protocols = request.GET.getlist("protocols")
     call_directions = request.GET.getlist("call_directions")
-    source = request.GET.get("source_match")  # ✅ new filter
+    source = request.GET.get("source_match")
 
     if protocols:
         q = Q()
@@ -669,19 +707,38 @@ def rule_list(request):
                     duplicate_map.setdefault(r2.id, set()).add(r1.name)
                     break
 
+    # --- Attach latest decision info per rule ---
+    latest_decisions = {
+        d["rule_id"]: d
+        for d in PolicyDecisionLog.objects.order_by("rule_id", "-decided_at")
+        .values("rule_id", "matched", "decided_at")
+    }
+    for r in rules:
+        if r.id in latest_decisions:
+            data = latest_decisions[r.id]
+            r.last_decision_matched = data["matched"]
+            r.last_decision_time = data["decided_at"]
+        else:
+            r.last_decision_matched = None
+            r.last_decision_time = None
+
+        # flag for advanced logic existence
+        r.has_advanced_logic = r.advanced_logic.filter(enabled=True).exists()
+
     return render(request, "policy_router/rule_list.html", {
         "rules": rules,
         "protocol_choices": PolicyProxyRule.PROTOCOL_CHOICES,
         "call_direction_choices": PolicyProxyRule.CALL_DIRECTION_CHOICES,
-        "distinct_sources": distinct_sources,  # ✅ added
+        "distinct_sources": distinct_sources,
         "filters": {
             "protocols": protocols,
             "call_directions": call_directions,
-            "source_match": source,  # ✅ added
+            "source_match": source,
         },
         "duplicate_ids": duplicate_ids,
         "duplicate_map": duplicate_map,
     })
+
 
 @maybe_protected
 def rule_create(request):
@@ -701,8 +758,11 @@ def rule_edit(request, pk):
     if request.method == "POST":
         form = PolicyProxyRuleForm(request.POST, instance=rule)
         if form.is_valid():
-            form.save()
+            # form.save()
+            saved_rule = form.save()
             messages.success(request, "Updated")
+            if form.cleaned_data.get("use_advanced_logic"):
+                return redirect("policy_engine:logic_editor", rule_id=saved_rule.id)
             return redirect(reverse("policy_router:rule_list"))
     else:
         form = PolicyProxyRuleForm(instance=rule)

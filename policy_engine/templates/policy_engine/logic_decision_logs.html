@@ -1,0 +1,99 @@
+{% extends "policy_router/base.html" %}
+{% block content %}
+<div class="container py-3">
+  <h2>Policy Decision Logs — {{ rule.name }}</h2>
+  <p class="text-muted">
+    Showing evaluations of advanced logic for this rule.
+  </p>
+
+  {% if page_obj %}
+  <div class="table-responsive">
+    <!-- <table class="table table-striped table-hover table-bordered small align-middle"> -->
+    <table class="table table-striped table-sm align-middle">
+    <thead>
+        <tr>
+        <th scope="col">Time</th>
+        <th scope="col">Type</th>
+        <th scope="col">Matched</th>
+        <th scope="col">Request</th>
+        <th scope="col">Response</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in page_obj %}
+        <tr>
+        <td>{{ log.decided_at|date:"Y-m-d H:i:s" }}</td>
+        <td>{{ log.rule_type }}</td>
+        <td>
+            {% if log.matched %}
+            <span class="badge bg-success">True</span>
+            {% else %}
+            <span class="badge bg-danger">False</span>
+            {% endif %}
+        </td>
+        <td>
+            {% if log.request_payload %}
+            <details>
+                <summary>Show Request</summary>
+                <pre class="bg-light border rounded p-2 small text-break">{{ log.request_payload|pprint }}</pre>
+            </details>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+        </td>
+        <td>
+            {% if log.response_payload %}
+            <details>
+                <summary>Show Response</summary>
+                <pre class="bg-light border rounded p-2 small text-break">{{ log.response_payload|pprint }}</pre>
+            </details>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+        </td>
+        </tr>
+        {% empty %}
+        <tr>
+        <td colspan="5" class="text-center text-muted">No decision logs found.</td>
+        </tr>
+        {% endfor %}
+
+    </tbody>
+    </table>
+
+
+  </div>
+
+  <nav>
+    <ul class="pagination">
+      {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+      </li>
+      {% endif %}
+      <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  <a class="btn btn-outline-secondary" href="{% url 'policy_router:rule_list' %}">← Back to Rules</a>
+</div>
+<style>
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+</style>
+
+{% endblock %}

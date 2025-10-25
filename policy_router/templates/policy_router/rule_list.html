@@ -148,6 +148,18 @@
                     ⚠️
                   </span>
                 {% endif %}
+                {% if rule.has_advanced_logic %}
+                    <a href="{% url 'policy_engine:logic_editor' rule.id %}"
+                      class="badge bg-info text-decoration-none ms-1"
+                      title="Edit Advanced Logic">
+                      Advanced
+                    </a>
+                    <a href="{% url 'policy_engine:logic_decision_logs' rule.id %}"
+                      class="badge bg-secondary text-decoration-none ms-1"
+                      title="View Decision Logs">
+                      Logs
+                    </a>
+                {% endif %}
               </strong>
             </td>
             <td>
@@ -211,6 +223,18 @@
                   <i class="bi bi-trash"></i> Delete
                 </a>
               </div>
+              <a href="{% url 'policy_engine:logic_decision_logs' rule.id %}" class="btn btn-sm btn-outline-info">
+                🧠 View Decisions
+              </a>
+              {% if rule.last_decision_matched is not None %}
+                {% if rule.last_decision_matched %}
+                  <span class="badge bg-success ms-1" title="Last decision matched">🟢</span>
+                {% else %}
+                  <span class="badge bg-danger ms-1" title="Last decision did not match">🔴</span>
+                {% endif %}
+              {% else %}
+                <span class="badge bg-secondary ms-1" title="No decisions yet">⚪</span>
+              {% endif %}
             </td>
           </tr>
           {% empty %}

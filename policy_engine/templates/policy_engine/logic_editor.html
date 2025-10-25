@@ -1,0 +1,56 @@
+{% extends 'policy_router/base.html' %}
+{% load static %}
+{% block content %}
+<div class='container py-3'>
+    <h2>Advanced Policy Logic — {{ rule.name }}</h2>
+    <form method='post'>
+        {% csrf_token %}
+        <ul class='nav nav-tabs'>
+            <li class='nav-item'><a class='nav-link active' data-bs-toggle='tab' href='#tab-participant'>Participant</a></li>
+            <li class='nav-item'><a class='nav-link' data-bs-toggle='tab' href='#tab-service'>Service</a></li>
+        </ul>
+        <div class='tab-content border p-3 border-top-0'>
+            <div class='tab-pane fade show active' id='tab-participant'>
+                <div class='form-check form-switch mb-2'>
+                    <input class='form-check-input' type='checkbox' name='participant_enabled' {% if participant.enabled %}checked{% endif %}>
+                    <label class='form-check-label'>Enable participant logic</label>
+                </div>
+                <div class='mb-2'>
+                    <label>Description</label>
+                    <input type='text' class='form-control' name='participant_description' value='{{ participant.description }}'>
+                </div>
+                <div class='mb-2'>
+                    <label>Conditions JSON</label>
+                    <textarea class='form-control font-monospace' rows='10' name='participant_conditions'>{{ participant.conditions|safe }}</textarea>
+                </div>
+                <div class='mb-2'>
+                    <label>Response JSON</label>
+                    <textarea class='form-control font-monospace' rows='6' name='participant_response'>{{ participant.response|safe }}</textarea>
+                </div>
+            </div>
+            <div class='tab-pane fade' id='tab-service'>
+                <div class='form-check form-switch mb-2'>
+                    <input class='form-check-input' type='checkbox' name='service_enabled' {% if service.enabled %}checked{% endif %}>
+                    <label class='form-check-label'>Enable service logic</label>
+                </div>
+                <div class='mb-2'>
+                    <label>Description</label>
+                    <input type='text' class='form-control' name='service_description' value='{{ service.description }}'>
+                </div>
+                <div class='mb-2'>
+                    <label>Conditions JSON</label>
+                    <textarea class='form-control font-monospace' rows='10' name='service_conditions'>{{ service.conditions|safe }}</textarea>
+                </div>
+                <div class='mb-2'>
+                    <label>Response JSON</label>
+                    <textarea class='form-control font-monospace' rows='6' name='service_response'>{{ service.response|safe }}</textarea>
+                </div>
+            </div>
+        </div>
+        <div class='mt-3'>
+            <button class='btn btn-success' type='submit'>Save</button>
+            <a class='btn btn-outline-secondary' href='{% url 'policy_router:rule_list' %}'>Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

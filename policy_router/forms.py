@@ -8,6 +8,8 @@ class CSVImportForm(forms.Form):
 
 
 class PolicyProxyRuleForm(forms.ModelForm):
+    use_advanced_logic = forms.BooleanField(required=False, label="Enable advanced logic")
+
     protocols = forms.MultipleChoiceField(
         choices=PolicyProxyRule.PROTOCOL_CHOICES,
         required=False,
