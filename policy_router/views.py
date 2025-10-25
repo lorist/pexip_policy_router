@@ -29,7 +29,6 @@ from django.db import transaction
 
 # Setup console logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG) # FUTURE read from ENV VAR
 
 def _increment_rule_usage(rule: PolicyProxyRule):
     """Increment usage metrics for a rule."""
