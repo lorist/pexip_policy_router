@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods, require_POST
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
-
+from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA
 from policy_router.models import PolicyProxyRule
 from .models import PolicyLogic
 from .forms import PolicyLogicForm
@@ -76,6 +76,8 @@ def logic_editor(request, rule_id):
         "service_logic": service_logic,
         "participant_form": participant_form,
         "service_form": service_form,
+        "service_schema": json.dumps(SERVICE_CALL_INFO_SCHEMA),
+        "participant_schema": json.dumps(PARTICIPANT_CALL_INFO_SCHEMA),
     }
     logger.debug(
         "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
@@ -124,3 +126,4 @@ def preview_logic(request, rule_id):
     except Exception as e:
         logger.exception("Preview logic error: %s", e)
         return JsonResponse({"success": False, "error": str(e)}, status=400)
+    

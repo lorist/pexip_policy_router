@@ -7,20 +7,16 @@
 <!-- Tabs -->
 <ul class="nav nav-tabs">
   <li class="nav-item">
-    <a class="nav-link {% if tab == 'participant' %}active{% endif %}" href="?tab=participant">
-      👤 Participant Logic
-    </a>
+    <a class="nav-link {% if tab == 'participant' %}active{% endif %}" href="?tab=participant">👤 Participant Logic</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link {% if tab == 'service' %}active{% endif %}" href="?tab=service">
-      ⚙️ Service Logic
-    </a>
+    <a class="nav-link {% if tab == 'service' %}active{% endif %}" href="?tab=service">⚙️ Service Logic</a>
   </li>
 </ul>
 
 <div class="tab-content mt-3">
 
-  <!-- Participant tab -->
+  <!-- PARTICIPANT -->
   <div class="tab-pane fade {% if tab == 'participant' %}show active{% endif %}" id="participant">
     <form method="post" class="card shadow-sm mt-3 p-3">
       {% csrf_token %}
@@ -44,19 +40,6 @@
 
       <hr>
       <h6>Response</h6>
-      <div class="row g-2 mb-3">
-        <div class="col-md-4">
-          <select id="participant_action" class="form-select">
-            <option value="continue">Continue</option>
-            <option value="reject">Reject</option>
-            <option value="override">Override</option>
-          </select>
-        </div>
-        <div class="col-md-8">
-          <input id="participant_reason" type="text" class="form-control" placeholder="Reason or extra data (optional)">
-        </div>
-      </div>
-
       <div class="mt-3">
         {{ participant_form.response_text }}
       </div>
@@ -67,8 +50,7 @@
     </form>
   </div>
 
-
-  <!-- Service tab -->
+  <!-- SERVICE -->
   <div class="tab-pane fade {% if tab == 'service' %}show active{% endif %}" id="service">
     <form method="post" class="card shadow-sm mt-3 p-3">
       {% csrf_token %}
@@ -92,19 +74,6 @@
 
       <hr>
       <h6>Response</h6>
-      <div class="row g-2 mb-3">
-        <div class="col-md-4">
-          <select id="service_action" class="form-select">
-            <option value="continue">Continue</option>
-            <option value="reject">Reject</option>
-            <option value="override">Override</option>
-          </select>
-        </div>
-        <div class="col-md-8">
-          <input id="service_reason" type="text" class="form-control" placeholder="Reason or extra data (optional)">
-        </div>
-      </div>
-
       <div class="mt-3">
         {{ service_form.response_text }}
       </div>
@@ -120,114 +89,30 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
-  // --- Build one condition row ---
-  function buildConditionRow(field = "", operator = "equals", value = "") {
-    return `
-      <div class="row g-2 align-items-center mb-2 condition-row">
-        <div class="col-md-4">
-          <select class="form-select condition-field">
-            <option value="call_direction" ${field==="call_direction"?"selected":""}>Call Direction</option>
-            <option value="protocol" ${field==="protocol"?"selected":""}>Protocol</option>
-            <option value="vendor" ${field==="vendor"?"selected":""}>Vendor</option>
-            <option value="bandwidth" ${field==="bandwidth"?"selected":""}>Bandwidth</option>
-            <option value="encryption" ${field==="encryption"?"selected":""}>Encryption</option>
-            <option value="registered" ${field==="registered"?"selected":""}>Registered</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <select class="form-select condition-operator">
-            <option value="equals" ${operator==="equals"?"selected":""}>=</option>
-            <option value="not_equals" ${operator==="not_equals"?"selected":""}>≠</option>
-            <option value="contains" ${operator==="contains"?"selected":""}>contains</option>
-            <option value="in" ${operator==="in"?"selected":""}>in list</option>
-          </select>
-        </div>
-        <div class="col-md-4">
-          <input type="text" class="form-control condition-value" value="${value||""}">
-        </div>
-        <div class="col-md-1 text-center">
-          <button type="button" class="btn btn-outline-danger btn-sm remove-condition">✖</button>
-        </div>
-      </div>`;
+  // Injected from Django context
+  const SERVICE_SCHEMA = {{ service_schema|safe }};
+  const PARTICIPANT_SCHEMA = {{ participant_schema|safe }};
+
+  function getSchema(type) {
+    return type === "participant" ? PARTICIPANT_SCHEMA : SERVICE_SCHEMA;
   }
 
-  // --- Initialize builders for both participant and service ---
-  document.querySelectorAll(".add-condition").forEach(btn => {
-    const targetId = btn.dataset.target;
-    const container = document.getElementById(targetId);
-    const textarea = container.closest("form").querySelector("textarea[name='conditions_text']");
-
-    // Load existing JSON (if any)
-    try {
-      const existing = JSON.parse(textarea.value || "{}");
-      const rules = existing.rules || [];
-      rules.forEach(r => container.insertAdjacentHTML("beforeend", buildConditionRow(r.field, r.operator, r.value)));
-    } catch (err) {
-      console.warn("Invalid existing JSON for", targetId);
-    }
-
-    // Add new condition
-    btn.addEventListener("click", () => {
-      container.insertAdjacentHTML("beforeend", buildConditionRow());
-      syncJSON(container, textarea);
-    });
-
-    // Input changes
-    container.addEventListener("input", () => syncJSON(container, textarea));
-
-    // Delete condition
-    container.addEventListener("click", e => {
-      if (e.target.classList.contains("remove-condition")) {
-        e.target.closest(".condition-row").remove();
-        syncJSON(container, textarea);
-      }
-    });
-  });
-
-  // --- Sync condition builder with hidden JSON ---
-  function syncJSON(container, textarea) {
-    const rows = container.querySelectorAll(".condition-row");
-    const rules = Array.from(rows).map(r => ({
-      field: r.querySelector(".condition-field").value,
-      operator: r.querySelector(".condition-operator").value,
-      value: r.querySelector(".condition-value").value
-    }));
-    const obj = { combiner: "all", rules };
-    textarea.value = JSON.stringify(obj, null, 2);
-  }
-  // --- Field options per logic type ---
-  const SERVICE_FIELDS = [
-    "call_direction", "protocol", "bandwidth", "vendor", "encryption", "registered",
-    "trigger", "remote_display_name", "remote_alias", "remote_address", "remote_port",
-    "call_tag", "idp_uuid", "has_authenticated_display_name", "supports_direct_media",
-    "teams_tenant_id", "third_party_passcode", "display_count", "location",
-    "node_ip", "version_id", "pseudo_version_id", "local_alias", "request_id"
-  ];
-
-  const PARTICIPANT_FIELDS = [
-    ...SERVICE_FIELDS,
-    "preauthenticated_role", "bypass_lock", "receive_from_audio_mix", "layout_group",
-    "spotlight", "disable_overlay_text", "prefers_multiscreen_mix", "wants_presentation_in_mix",
-    "can_receive_personal_mix", "rx_presentation_policy", "participant_type", "participant_uuid",
-    "call_uuid", "breakout_uuid", "send_to_audio_mixes_mix_name", "send_to_audio_mixes_prominent",
-    "receive_from_video_mix~mix_name", "unique_service_name", "service_name", "service_tag"
-  ];
-
-  // --- Helper: Build a <select> list of field options ---
-  function buildFieldSelect(fields, selected = "") {
+  // --- Build dropdown options dynamically from schema ---
+  function buildFieldSelect(schema, selected = "") {
     return `
       <select class="form-select condition-field">
-        ${fields.map(f => `<option value="${f}" ${f===selected ? "selected" : ""}>${f}</option>`).join("")}
-      </select>
-    `;
+        ${Object.keys(schema).map(k => {
+          const label = schema[k].type ? `${k} (${schema[k].type})` : k;
+          return `<option value="${k}" ${k === selected ? "selected" : ""}>${label}</option>`;
+        }).join("")}
+      </select>`;
   }
 
-  // --- Build a condition row for a given logic type ---
   function buildConditionRow(type, field = "", operator = "equals", value = "") {
-    const options = type === "participant" ? PARTICIPANT_FIELDS : SERVICE_FIELDS;
+    const schema = getSchema(type);
     return `
       <div class="row g-2 align-items-center mb-2 condition-row" data-type="${type}">
-        <div class="col-md-5">${buildFieldSelect(options, field)}</div>
+        <div class="col-md-5">${buildFieldSelect(schema, field)}</div>
         <div class="col-md-3">
           <select class="form-select condition-operator">
             <option value="equals" ${operator==="equals"?"selected":""}>=</option>
@@ -245,7 +130,6 @@ document.addEventListener("DOMContentLoaded", () => {
       </div>`;
   }
 
-  // --- Sync builder <-> textarea ---
   function syncJSON(container, textarea) {
     const rows = container.querySelectorAll(".condition-row");
     const rules = Array.from(rows).map(r => ({
@@ -256,32 +140,27 @@ document.addEventListener("DOMContentLoaded", () => {
     textarea.value = JSON.stringify({ combiner: "all", rules }, null, 2);
   }
 
-  // --- Initialize for all add-condition buttons ---
   document.querySelectorAll(".add-condition").forEach(btn => {
     const targetId = btn.dataset.target;
     const type = targetId.includes("participant") ? "participant" : "service";
     const container = document.getElementById(targetId);
     const textarea = container.closest("form").querySelector("textarea[name$='conditions_text']");
 
-    // load existing JSON
+    // Load existing JSON
     try {
       const existing = JSON.parse(textarea.value || "{}");
       const rules = existing.rules || [];
       rules.forEach(r => container.insertAdjacentHTML("beforeend", buildConditionRow(type, r.field, r.operator, r.value)));
-    } catch (err) {
+    } catch {
       console.warn("Invalid existing JSON for", targetId);
     }
 
-    // add new
     btn.addEventListener("click", () => {
       container.insertAdjacentHTML("beforeend", buildConditionRow(type));
       syncJSON(container, textarea);
     });
 
-    // input changes
     container.addEventListener("input", () => syncJSON(container, textarea));
-
-    // remove
     container.addEventListener("click", e => {
       if (e.target.classList.contains("remove-condition")) {
         e.target.closest(".condition-row").remove();

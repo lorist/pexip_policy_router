@@ -1,7 +1,7 @@
 import json
 from django import forms
 from .models import PolicyLogic
-
+from .schema import SCHEMAS_BY_TYPE
 
 class JSONTextarea(forms.Textarea):
     def __init__(self, **kwargs):
@@ -16,16 +16,34 @@ class JSONTextarea(forms.Textarea):
 
 
 class PolicyLogicForm(forms.ModelForm):
-    # Store JSON as text in the form (with validation) for a nicer editing UX
-    conditions_text = forms.CharField(
-        required=False,
-        widget=JSONTextarea(attrs={"placeholder": '{ "combiner": "all", "rules": [] }'}),
-        help_text="JSON object describing rules. Leave blank for match-all.",
+    rule_type = forms.ChoiceField(
+        choices=[("participant", "Participant Policy"), ("service", "Service Policy")],
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
-    response_text = forms.CharField(
+
+    field_name = forms.ChoiceField(
         required=False,
-        widget=JSONTextarea(attrs={"placeholder": "{}"}),
-        help_text="JSON object returned when conditions match.",
+        widget=forms.Select(attrs={"class": "form-select"}),
+        help_text="Select a call_info parameter to use in your condition",
+    )
+
+    operator = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("equals", "Equals"),
+            ("not_equals", "Not Equals"),
+            ("contains", "Contains"),
+            ("starts_with", "Starts With"),
+            ("gt", "Greater Than"),
+            ("lt", "Less Than"),
+        ],
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    value = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+        help_text="Value to compare against (type-sensitive)",
     )
 
     class Meta:
@@ -33,43 +51,15 @@ class PolicyLogicForm(forms.ModelForm):
         fields = ["enabled", "description"]
 
     def __init__(self, *args, **kwargs):
-        instance: PolicyLogic = kwargs.get("instance")
-        initial = kwargs.setdefault("initial", {})
-        if instance:
-            initial["conditions_text"] = json.dumps(instance.conditions or {}, indent=2)
-            initial["response_text"] = json.dumps(instance.response or {}, indent=2)
+        instance = kwargs.get("instance")
         super().__init__(*args, **kwargs)
 
-    def clean_conditions_text(self):
-        raw = self.cleaned_data.get("conditions_text") or ""
-        if raw.strip() == "":
-            return {}  # treat empty as match-all
-        try:
-            data = json.loads(raw)
-            if not isinstance(data, dict):
-                raise forms.ValidationError("Conditions must be a JSON object.")
-            return data
-        except json.JSONDecodeError as e:
-            raise forms.ValidationError(f"Invalid JSON: {e}")
+        schema = SCHEMAS_BY_TYPE.get(
+            instance.rule_type if instance else "participant",
+            {},
+        )
 
-    def clean_response_text(self):
-        raw = self.cleaned_data.get("response_text") or "{}"
-        try:
-            data = json.loads(raw)
-            if not isinstance(data, dict):
-                raise forms.ValidationError("Response must be a JSON object.")
-            return data
-        except json.JSONDecodeError as e:
-            raise forms.ValidationError(f"Invalid JSON: {e}")
-
-    def save(self, commit=True):
-        obj: PolicyLogic = super().save(commit=False)
-        obj.conditions = self.cleaned_data["cleaned_conditions"] = self.cleaned_data[
-            "conditions_text"
+        # Populate dropdown dynamically
+        self.fields["field_name"].choices = [
+            (k, f"{k} ({v['type']})") for k, v in schema.items()
         ]
-        obj.response = self.cleaned_data["cleaned_response"] = self.cleaned_data[
-            "response_text"
-        ]
-        if commit:
-            obj.save()
-        return obj
