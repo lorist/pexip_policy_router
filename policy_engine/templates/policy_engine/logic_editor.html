@@ -1,219 +1,294 @@
 {% extends "policy_router/base.html" %}
 {% block title %}Advanced Logic Editor – {{ rule.name }}{% endblock %}
-
 {% block content %}
-<h2 class="mb-4">🧠 Advanced Logic for Rule: <strong>{{ rule.name }}</strong></h2>
 
-<form method="post" id="logic-form">
-  {% csrf_token %}
+<h2 class="mb-4">🧠 Advanced Logic Builder for <strong>{{ rule.name }}</strong></h2>
 
-  <!-- Tabs Header -->
-  <ul class="nav nav-tabs" id="logicTabs" role="tablist">
-    <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="participant-tab" data-bs-toggle="tab"
-              data-bs-target="#participant" type="button" role="tab"
-              aria-controls="participant" aria-selected="true">
-        👤 Participant Logic
+<!-- Tabs -->
+<ul class="nav nav-tabs">
+  <li class="nav-item">
+    <a class="nav-link {% if tab == 'participant' %}active{% endif %}" href="?tab=participant">
+      👤 Participant Logic
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if tab == 'service' %}active{% endif %}" href="?tab=service">
+      ⚙️ Service Logic
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content mt-3">
+
+  <!-- Participant tab -->
+  <div class="tab-pane fade {% if tab == 'participant' %}show active{% endif %}" id="participant">
+    <form method="post" class="card shadow-sm mt-3 p-3">
+      {% csrf_token %}
+      <input type="hidden" name="logic_type" value="participant">
+      <h5 class="mb-3">Participant Logic</h5>
+
+      <div class="form-check form-switch mb-3">
+        {{ participant_form.enabled }}
+        <label class="form-check-label" for="{{ participant_form.enabled.id_for_label }}">Enabled</label>
+      </div>
+
+      <h6>Conditions</h6>
+      <div id="participant-conditions" class="mb-3"></div>
+      <button type="button" class="btn btn-outline-secondary btn-sm add-condition" data-target="participant-conditions">
+        ➕ Add Condition
       </button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="service-tab" data-bs-toggle="tab"
-              data-bs-target="#service" type="button" role="tab"
-              aria-controls="service" aria-selected="false">
-        ⚙️ Service Logic
-      </button>
-    </li>
-  </ul>
 
-  <!-- Tabs Content -->
-  <div class="tab-content p-3 border border-top-0 rounded-bottom bg-body-tertiary" id="logicTabsContent">
+      <div class="mt-3">
+        {{ participant_form.conditions_text }}
+      </div>
 
-    <!-- ===================== Participant Tab ===================== -->
-    <div class="tab-pane fade show active" id="participant" role="tabpanel" aria-labelledby="participant-tab">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <strong>Participant Logic</strong>
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="participant_enabled"
-                   name="participant_enabled" {% if participant_logic.enabled %}checked{% endif %}>
-            <label class="form-check-label" for="participant_enabled">Enabled</label>
-          </div>
+      <hr>
+      <h6>Response</h6>
+      <div class="row g-2 mb-3">
+        <div class="col-md-4">
+          <select id="participant_action" class="form-select">
+            <option value="continue">Continue</option>
+            <option value="reject">Reject</option>
+            <option value="override">Override</option>
+          </select>
         </div>
-        <div class="card-body">
-          <div class="row g-4">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Conditions (JSON)</label>
-              <textarea id="participant_conditions"
-                        name="participant_conditions"
-                        class="form-control json-textarea"
-                        rows="12">{{ participant_logic.conditions|safe }}</textarea>
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Response (JSON)</label>
-              <textarea id="participant_response"
-                        name="participant_response"
-                        class="form-control json-textarea"
-                        rows="12">{{ participant_logic.response|safe }}</textarea>
-            </div>
-          </div>
-        </div>
-        <div class="card-footer text-end">
-          <button type="button" class="btn btn-outline-primary btn-sm preview-btn" data-type="participant">🔍 Preview</button>
+        <div class="col-md-8">
+          <input id="participant_reason" type="text" class="form-control" placeholder="Reason or extra data (optional)">
         </div>
       </div>
 
-      <div id="participant-preview" class="mt-3"></div>
-    </div>
+      <div class="mt-3">
+        {{ participant_form.response_text }}
+      </div>
 
-    <!-- ===================== Service Tab ===================== -->
-    <div class="tab-pane fade" id="service" role="tabpanel" aria-labelledby="service-tab">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <strong>Service Logic</strong>
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="service_enabled"
-                   name="service_enabled" {% if service_logic.enabled %}checked{% endif %}>
-            <label class="form-check-label" for="service_enabled">Enabled</label>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="row g-4">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Conditions (JSON)</label>
-              <textarea id="service_conditions"
-                        name="service_conditions"
-                        class="form-control json-textarea"
-                        rows="12">{{ service_logic.conditions|safe }}</textarea>
-            </div>
+      <div class="text-end mt-4">
+        <button type="submit" class="btn btn-primary btn-sm">💾 Save Participant</button>
+      </div>
+    </form>
+  </div>
 
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Response (JSON)</label>
-              <textarea id="service_response"
-                        name="service_response"
-                        class="form-control json-textarea"
-                        rows="12">{{ service_logic.response|safe }}</textarea>
-            </div>
-          </div>
+
+  <!-- Service tab -->
+  <div class="tab-pane fade {% if tab == 'service' %}show active{% endif %}" id="service">
+    <form method="post" class="card shadow-sm mt-3 p-3">
+      {% csrf_token %}
+      <input type="hidden" name="logic_type" value="service">
+      <h5 class="mb-3">Service Logic</h5>
+
+      <div class="form-check form-switch mb-3">
+        {{ service_form.enabled }}
+        <label class="form-check-label" for="{{ service_form.enabled.id_for_label }}">Enabled</label>
+      </div>
+
+      <h6>Conditions</h6>
+      <div id="service-conditions" class="mb-3"></div>
+      <button type="button" class="btn btn-outline-secondary btn-sm add-condition" data-target="service-conditions">
+        ➕ Add Condition
+      </button>
+
+      <div class="mt-3">
+        {{ service_form.conditions_text }}
+      </div>
+
+      <hr>
+      <h6>Response</h6>
+      <div class="row g-2 mb-3">
+        <div class="col-md-4">
+          <select id="service_action" class="form-select">
+            <option value="continue">Continue</option>
+            <option value="reject">Reject</option>
+            <option value="override">Override</option>
+          </select>
         </div>
-        <div class="card-footer text-end">
-          <button type="button" class="btn btn-outline-primary btn-sm preview-btn" data-type="service">🔍 Preview</button>
+        <div class="col-md-8">
+          <input id="service_reason" type="text" class="form-control" placeholder="Reason or extra data (optional)">
         </div>
       </div>
 
-      <div id="service-preview" class="mt-3"></div>
-    </div>
+      <div class="mt-3">
+        {{ service_form.response_text }}
+      </div>
+
+      <div class="text-end mt-4">
+        <button type="submit" class="btn btn-primary btn-sm">💾 Save Service</button>
+      </div>
+    </form>
   </div>
 
-  <div class="text-end mt-4">
-    <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
-    <a href="{% url 'policy_router:rule_edit' rule.id %}" class="btn btn-secondary btn-sm">← Back to Rule</a>
-  </div>
-</form>
+</div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const theme = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "dracula" : "eclipse";
 
-  // --- Initialize CodeMirror editors ---
-  const editors = {};
-  document.querySelectorAll(".json-textarea").forEach(textarea => {
-    try {
-      const parsed = JSON.parse(textarea.value);
-      textarea.value = JSON.stringify(parsed, null, 2);
-    } catch {}
-
-    if (window.CodeMirror) {
-      const editor = CodeMirror.fromTextArea(textarea, {
-        mode: { name: "javascript", json: true },
-        lineNumbers: true,
-        autoCloseBrackets: true,
-        matchBrackets: true,
-        tabSize: 2,
-        theme: theme,
-      });
-      editor.setSize("100%", "350px");
-      editors[textarea.id] = editor;
-    }
-  });
-
-  // --- Remember selected tab in URL ---
-  const urlParams = new URLSearchParams(window.location.search);
-  const tab = urlParams.get("tab");
-  if (tab) {
-    const triggerEl = document.querySelector(`[data-bs-target="#${tab}"]`);
-    if (triggerEl) new bootstrap.Tab(triggerEl).show();
+  // --- Build one condition row ---
+  function buildConditionRow(field = "", operator = "equals", value = "") {
+    return `
+      <div class="row g-2 align-items-center mb-2 condition-row">
+        <div class="col-md-4">
+          <select class="form-select condition-field">
+            <option value="call_direction" ${field==="call_direction"?"selected":""}>Call Direction</option>
+            <option value="protocol" ${field==="protocol"?"selected":""}>Protocol</option>
+            <option value="vendor" ${field==="vendor"?"selected":""}>Vendor</option>
+            <option value="bandwidth" ${field==="bandwidth"?"selected":""}>Bandwidth</option>
+            <option value="encryption" ${field==="encryption"?"selected":""}>Encryption</option>
+            <option value="registered" ${field==="registered"?"selected":""}>Registered</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <select class="form-select condition-operator">
+            <option value="equals" ${operator==="equals"?"selected":""}>=</option>
+            <option value="not_equals" ${operator==="not_equals"?"selected":""}>≠</option>
+            <option value="contains" ${operator==="contains"?"selected":""}>contains</option>
+            <option value="in" ${operator==="in"?"selected":""}>in list</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <input type="text" class="form-control condition-value" value="${value||""}">
+        </div>
+        <div class="col-md-1 text-center">
+          <button type="button" class="btn btn-outline-danger btn-sm remove-condition">✖</button>
+        </div>
+      </div>`;
   }
-  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(btn => {
-    btn.addEventListener("shown.bs.tab", e => {
-      const newTab = e.target.getAttribute("data-bs-target").substring(1);
-      const url = new URL(window.location);
-      url.searchParams.set("tab", newTab);
-      history.replaceState(null, "", url);
+
+  // --- Initialize builders for both participant and service ---
+  document.querySelectorAll(".add-condition").forEach(btn => {
+    const targetId = btn.dataset.target;
+    const container = document.getElementById(targetId);
+    const textarea = container.closest("form").querySelector("textarea[name='conditions_text']");
+
+    // Load existing JSON (if any)
+    try {
+      const existing = JSON.parse(textarea.value || "{}");
+      const rules = existing.rules || [];
+      rules.forEach(r => container.insertAdjacentHTML("beforeend", buildConditionRow(r.field, r.operator, r.value)));
+    } catch (err) {
+      console.warn("Invalid existing JSON for", targetId);
+    }
+
+    // Add new condition
+    btn.addEventListener("click", () => {
+      container.insertAdjacentHTML("beforeend", buildConditionRow());
+      syncJSON(container, textarea);
     });
-  });
 
-  // --- Preview Button Handler ---
-  document.querySelectorAll(".preview-btn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const type = btn.dataset.type;
-      const condEditor = editors[`${type}_conditions`];
-      const respEditor = editors[`${type}_response`];
-      const previewDiv = document.getElementById(`${type}-preview`);
-      previewDiv.innerHTML = "";
+    // Input changes
+    container.addEventListener("input", () => syncJSON(container, textarea));
 
-      try {
-        const conditions = JSON.parse(condEditor.getValue());
-        const response = JSON.parse(respEditor.getValue());
-
-        // Optional mock call_info (in a real app you can make this editable)
-        const call_info = {
-          call_direction: "in",
-          protocol: "sip",
-          vendor: "pexip",
-          registered: true,
-        };
-
-        const res = await fetch(`{{ request.path }}preview/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            logic_type: type,
-            conditions: conditions,
-            response: response,
-            call_info: call_info,
-          }),
-        });
-
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || "Preview failed");
-
-        const result = data.result;
-        const matched = result.matched ? "✅ Match" : "⚪ No match";
-
-        const html = `
-          <div class="card border-${result.matched ? "success" : "warning"} shadow-sm">
-            <div class="card-header bg-${result.matched ? "success" : "warning"}-subtle fw-bold">
-              ${matched} – ${type.charAt(0).toUpperCase() + type.slice(1)} Evaluation
-            </div>
-            <div class="card-body">
-              <h6 class="fw-semibold">Evaluated Response</h6>
-              <pre class="bg-body-tertiary p-2 border rounded"><code>${JSON.stringify(result.evaluated_response, null, 2)}</code></pre>
-              ${
-                !result.matched && result.failed_conditions.length
-                  ? `<h6 class="fw-semibold mt-3">Failed Conditions</h6>
-                    <pre class="bg-body-tertiary p-2 border rounded"><code>${JSON.stringify(result.failed_conditions, null, 2)}</code></pre>`
-                  : ""
-              }
-            </div>
-          </div>`;
-        previewDiv.innerHTML = html;
-      } catch (e) {
-        previewDiv.innerHTML = `<div class="alert alert-danger">❌ Error: ${e.message}</div>`;
+    // Delete condition
+    container.addEventListener("click", e => {
+      if (e.target.classList.contains("remove-condition")) {
+        e.target.closest(".condition-row").remove();
+        syncJSON(container, textarea);
       }
     });
   });
 
+  // --- Sync condition builder with hidden JSON ---
+  function syncJSON(container, textarea) {
+    const rows = container.querySelectorAll(".condition-row");
+    const rules = Array.from(rows).map(r => ({
+      field: r.querySelector(".condition-field").value,
+      operator: r.querySelector(".condition-operator").value,
+      value: r.querySelector(".condition-value").value
+    }));
+    const obj = { combiner: "all", rules };
+    textarea.value = JSON.stringify(obj, null, 2);
+  }
+  // --- Field options per logic type ---
+  const SERVICE_FIELDS = [
+    "call_direction", "protocol", "bandwidth", "vendor", "encryption", "registered",
+    "trigger", "remote_display_name", "remote_alias", "remote_address", "remote_port",
+    "call_tag", "idp_uuid", "has_authenticated_display_name", "supports_direct_media",
+    "teams_tenant_id", "third_party_passcode", "display_count", "location",
+    "node_ip", "version_id", "pseudo_version_id", "local_alias", "request_id"
+  ];
+
+  const PARTICIPANT_FIELDS = [
+    ...SERVICE_FIELDS,
+    "preauthenticated_role", "bypass_lock", "receive_from_audio_mix", "layout_group",
+    "spotlight", "disable_overlay_text", "prefers_multiscreen_mix", "wants_presentation_in_mix",
+    "can_receive_personal_mix", "rx_presentation_policy", "participant_type", "participant_uuid",
+    "call_uuid", "breakout_uuid", "send_to_audio_mixes_mix_name", "send_to_audio_mixes_prominent",
+    "receive_from_video_mix~mix_name", "unique_service_name", "service_name", "service_tag"
+  ];
+
+  // --- Helper: Build a <select> list of field options ---
+  function buildFieldSelect(fields, selected = "") {
+    return `
+      <select class="form-select condition-field">
+        ${fields.map(f => `<option value="${f}" ${f===selected ? "selected" : ""}>${f}</option>`).join("")}
+      </select>
+    `;
+  }
+
+  // --- Build a condition row for a given logic type ---
+  function buildConditionRow(type, field = "", operator = "equals", value = "") {
+    const options = type === "participant" ? PARTICIPANT_FIELDS : SERVICE_FIELDS;
+    return `
+      <div class="row g-2 align-items-center mb-2 condition-row" data-type="${type}">
+        <div class="col-md-5">${buildFieldSelect(options, field)}</div>
+        <div class="col-md-3">
+          <select class="form-select condition-operator">
+            <option value="equals" ${operator==="equals"?"selected":""}>=</option>
+            <option value="not_equals" ${operator==="not_equals"?"selected":""}>≠</option>
+            <option value="contains" ${operator==="contains"?"selected":""}>contains</option>
+            <option value="in" ${operator==="in"?"selected":""}>in list</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <input type="text" class="form-control condition-value" value="${value || ""}">
+        </div>
+        <div class="col-md-1 text-center">
+          <button type="button" class="btn btn-outline-danger btn-sm remove-condition">✖</button>
+        </div>
+      </div>`;
+  }
+
+  // --- Sync builder <-> textarea ---
+  function syncJSON(container, textarea) {
+    const rows = container.querySelectorAll(".condition-row");
+    const rules = Array.from(rows).map(r => ({
+      field: r.querySelector(".condition-field").value,
+      operator: r.querySelector(".condition-operator").value,
+      value: r.querySelector(".condition-value").value
+    }));
+    textarea.value = JSON.stringify({ combiner: "all", rules }, null, 2);
+  }
+
+  // --- Initialize for all add-condition buttons ---
+  document.querySelectorAll(".add-condition").forEach(btn => {
+    const targetId = btn.dataset.target;
+    const type = targetId.includes("participant") ? "participant" : "service";
+    const container = document.getElementById(targetId);
+    const textarea = container.closest("form").querySelector("textarea[name$='conditions_text']");
+
+    // load existing JSON
+    try {
+      const existing = JSON.parse(textarea.value || "{}");
+      const rules = existing.rules || [];
+      rules.forEach(r => container.insertAdjacentHTML("beforeend", buildConditionRow(type, r.field, r.operator, r.value)));
+    } catch (err) {
+      console.warn("Invalid existing JSON for", targetId);
+    }
+
+    // add new
+    btn.addEventListener("click", () => {
+      container.insertAdjacentHTML("beforeend", buildConditionRow(type));
+      syncJSON(container, textarea);
+    });
+
+    // input changes
+    container.addEventListener("input", () => syncJSON(container, textarea));
+
+    // remove
+    container.addEventListener("click", e => {
+      if (e.target.classList.contains("remove-condition")) {
+        e.target.closest(".condition-row").remove();
+        syncJSON(container, textarea);
+      }
+    });
+  });
 });
 </script>
 {% endblock %}

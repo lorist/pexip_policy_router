@@ -41,82 +41,50 @@ def test_signal(request):
 @require_http_methods(["GET", "POST"])
 def logic_editor(request, rule_id):
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    tab = request.GET.get("tab", "participant")
 
-    # Ensure logic objects exist
     participant_logic, _ = PolicyLogic.objects.get_or_create(
         rule=rule,
         rule_type="participant",
-        defaults={"enabled": True, "conditions": {}, "response": {}},
+        defaults={"enabled": False, "conditions": {}, "response": {}},
     )
     service_logic, _ = PolicyLogic.objects.get_or_create(
         rule=rule,
         rule_type="service",
-        defaults={"enabled": True, "conditions": {}, "response": {}},
+        defaults={"enabled": False, "conditions": {}, "response": {}},
     )
 
-    if request.method == "GET":
-        logger.debug(
-            "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
-            rule.id,
-            participant_logic.id,
-            service_logic.id,
-        )
+    # instantiate forms separately
+    participant_form = PolicyLogicForm(
+        request.POST or None, instance=participant_logic, prefix="participant"
+    )
+    service_form = PolicyLogicForm(
+        request.POST or None, instance=service_logic, prefix="service"
+    )
 
-    elif request.method == "POST":
-        logger.info("🧠 Saving advanced logic for rule %s", rule.id)
-        updates = []
-
-        for logic in (participant_logic, service_logic):
-            ltype = logic.rule_type
-            try:
-                # Capture old state for diff
-                old_state = {
-                    "enabled": logic.enabled,
-                    "conditions": logic.conditions,
-                    "response": logic.response,
-                }
-
-                cond_json = request.POST.get(f"{ltype}_conditions", "{}")
-                resp_json = request.POST.get(f"{ltype}_response", "{}")
-                logic.conditions = json.loads(cond_json)
-                logic.response = json.loads(resp_json)
-                logic.enabled = bool(request.POST.get(f"{ltype}_enabled"))
-                logic.save()
-
-                # Diff detection
-                diffs = []
-                for k in ["enabled", "conditions", "response"]:
-                    if logic.__dict__.get(k) != old_state.get(k):
-                        diffs.append(k)
-
-                updates.append(f"{ltype}: updated {', '.join(diffs) or 'no changes'}")
-
-            except json.JSONDecodeError as e:
-                logger.warning(
-                    "Invalid JSON for %s logic in rule %s: %s",
-                    ltype,
-                    rule.id,
-                    e,
-                )
-            except Exception as e:
-                logger.exception(
-                    "Unexpected error saving %s logic for rule %s: %s",
-                    ltype,
-                    rule.id,
-                    e,
-                )
-
-        if updates:
-            logger.info("Rule %s logic updates → %s", rule.id, "; ".join(updates))
-        else:
-            logger.debug("Rule %s logic save completed: no changes detected", rule.id)
+    if request.method == "POST":
+        target = request.POST.get("logic_type")
+        form = participant_form if target == "participant" else service_form
+        if form.is_valid():
+            form.save()
+            logger.info("Saved %s logic for rule %s", target, rule.id)
 
     context = {
         "rule": rule,
+        "tab": tab,
         "participant_logic": participant_logic,
         "service_logic": service_logic,
+        "participant_form": participant_form,
+        "service_form": service_form,
     }
+    logger.debug(
+        "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
+        rule.id,
+        participant_logic.id,
+        service_logic.id,
+    )
     return render(request, "policy_engine/logic_editor.html", context)
+
 
 @csrf_exempt  # frontend fetch can call directly (you can secure later)
 @require_POST
