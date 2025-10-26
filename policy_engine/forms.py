@@ -1,65 +1,48 @@
 import json
 from django import forms
 from .models import PolicyLogic
-from .schema import SCHEMAS_BY_TYPE
 
-class JSONTextarea(forms.Textarea):
-    def __init__(self, **kwargs):
-        attrs = kwargs.pop("attrs", {})
-        default = {
-            "rows": 10,
-            "class": "form-control font-monospace",
-            "spellcheck": "false",
-        }
-        default.update(attrs)
-        super().__init__(attrs=default)
+
+class JSONHiddenField(forms.CharField):
+    """A hidden field for storing JSON data (from JS builder)."""
+    widget = forms.HiddenInput()
+
+    def clean(self, value):
+        if not value:
+            return {}
+        try:
+            data = json.loads(value)
+            if not isinstance(data, dict):
+                raise forms.ValidationError("Invalid JSON structure.")
+            return data
+        except json.JSONDecodeError:
+            raise forms.ValidationError("Invalid JSON format.")
 
 
 class PolicyLogicForm(forms.ModelForm):
-    rule_type = forms.ChoiceField(
-        choices=[("participant", "Participant Policy"), ("service", "Service Policy")],
-        widget=forms.Select(attrs={"class": "form-select"}),
-    )
-
-    field_name = forms.ChoiceField(
+    conditions = JSONHiddenField(required=False)
+    response_action = forms.ChoiceField(
         required=False,
-        widget=forms.Select(attrs={"class": "form-select"}),
-        help_text="Select a call_info parameter to use in your condition",
-    )
-
-    operator = forms.ChoiceField(
-        required=False,
-        choices=[
-            ("equals", "Equals"),
-            ("not_equals", "Not Equals"),
-            ("contains", "Contains"),
-            ("starts_with", "Starts With"),
-            ("gt", "Greater Than"),
-            ("lt", "Less Than"),
-        ],
+        choices=[("continue", "Continue"), ("reject", "Reject"), ("override", "Override")],
         widget=forms.Select(attrs={"class": "form-select"}),
     )
-
-    value = forms.CharField(
+    response_reason = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={"class": "form-control"}),
-        help_text="Value to compare against (type-sensitive)",
+        help_text="Optional reason or metadata.",
     )
 
     class Meta:
         model = PolicyLogic
-        fields = ["enabled", "description"]
+        fields = ["enabled", "description", "conditions"]
 
-    def __init__(self, *args, **kwargs):
-        instance = kwargs.get("instance")
-        super().__init__(*args, **kwargs)
-
-        schema = SCHEMAS_BY_TYPE.get(
-            instance.rule_type if instance else "participant",
-            {},
-        )
-
-        # Populate dropdown dynamically
-        self.fields["field_name"].choices = [
-            (k, f"{k} ({v['type']})") for k, v in schema.items()
-        ]
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.conditions = self.cleaned_data["conditions"] or {"combiner": "all", "rules": []}
+        obj.response = {
+            "action": self.cleaned_data.get("response_action"),
+            "reason": self.cleaned_data.get("response_reason"),
+        }
+        if commit:
+            obj.save()
+        return obj

@@ -1,112 +1,105 @@
 import re
-from typing import Any, Dict, List
+import logging
+from typing import Any, Dict, List, Tuple
 
+logger = logging.getLogger("policy_engine.utils")
 
-def _get_by_path(data: Dict[str, Any], path: str, default=None):
-    """
-    Resolve dotted paths like "participant.display_name" or "protocol".
-    Supports list indices: "participants.0.alias"
-    """
-    cur = data
-    for part in path.split("."):
-        if isinstance(cur, list):
-            try:
-                idx = int(part)
-                cur = cur[idx]
-            except (ValueError, IndexError):
-                return default
-        elif isinstance(cur, dict):
-            if part in cur:
-                cur = cur[part]
-            else:
-                return default
+def evaluate_single_condition(field_value: Any, operator: str, expected_value: str) -> bool:
+    """Evaluate a single atomic condition."""
+    try:
+        # Normalize types for comparison
+        if isinstance(field_value, str):
+            fv = field_value.lower()
+            ev = str(expected_value).lower()
         else:
-            return default
-    return cur
+            fv = field_value
+            ev = expected_value
+
+        # String-based matching
+        if operator == "equals":
+            return fv == ev
+        elif operator == "not_equals":
+            return fv != ev
+        elif operator == "contains":
+            return ev in fv if isinstance(fv, str) else False
+        elif operator == "starts_with":
+            return fv.startswith(ev)
+        elif operator == "ends_with":
+            return fv.endswith(ev)
+        elif operator == "regex_match":
+            return bool(re.search(ev, str(fv)))
+        elif operator in (">", "greater_than"):
+            return float(fv) > float(ev)
+        elif operator in ("<", "less_than"):
+            return float(fv) < float(ev)
+        elif operator in (">=", "greater_or_equal"):
+            return float(fv) >= float(ev)
+        elif operator in ("<=", "less_or_equal"):
+            return float(fv) <= float(ev)
+        elif operator == "in_list":
+            return fv in [x.strip() for x in ev.split(",")]
+        elif operator == "not_in_list":
+            return fv not in [x.strip() for x in ev.split(",")]
+        elif operator == "is_true":
+            return bool(fv) is True
+        elif operator == "is_false":
+            return bool(fv) is False
+        else:
+            logger.warning(f"Unknown operator: {operator}")
+            return False
+    except Exception as e:
+        logger.exception(f"Error evaluating condition ({field_value}, {operator}, {expected_value}): {e}")
+        return False
 
 
-def _compare(lhs, op: str, rhs):
-    if op == "eq":
-        return lhs == rhs
-    if op == "ne":
-        return lhs != rhs
-    if op == "gt":
-        try:
-            return lhs > rhs
-        except Exception:
-            return False
-    if op == "gte":
-        try:
-            return lhs >= rhs
-        except Exception:
-            return False
-    if op == "lt":
-        try:
-            return lhs < rhs
-        except Exception:
-            return False
-    if op == "lte":
-        try:
-            return lhs <= rhs
-        except Exception:
-            return False
-    if op == "in":
-        try:
-            return lhs in rhs
-        except Exception:
-            return False
-    if op == "contains":
-        try:
-            return rhs in lhs
-        except Exception:
-            return False
-    if op == "startswith":
-        try:
-            return str(lhs).startswith(str(rhs))
-        except Exception:
-            return False
-    if op == "endswith":
-        try:
-            return str(lhs).endswith(str(rhs))
-        except Exception:
-            return False
-    if op == "regex":
-        try:
-            return re.search(str(rhs), str(lhs)) is not None
-        except Exception:
-            return False
-    return False
-
-
-def evaluate_conditions(call_info: Dict[str, Any], conditions: Dict[str, Any]) -> bool:
+def evaluate_conditions_group(group: Dict, call_info: Dict[str, Any], path="root") -> Tuple[bool, List[str]]:
     """
-    Evaluate a conditions JSON object against a call_info dict.
-
-    Structure:
-    {
-      "combiner": "all"|"any",
-      "rules": [
-        {"path": "protocol", "op": "eq", "value": "webrtc"},
-        ...
-      ]
-    }
+    Recursively evaluate a nested condition group.
+    Returns (matched, failed_conditions)
     """
-    if not conditions:
-        # default: no conditions means "match all"
-        return True
-
-    rules: List[Dict[str, Any]] = conditions.get("rules", [])
-    combiner: str = conditions.get("combiner", "all").lower()
+    combiner = group.get("combiner", "all")
+    rules = group.get("rules", [])
+    failed = []
 
     results = []
-    for rule in rules:
-        path = rule.get("path", "")
-        op = rule.get("op", "eq")
-        value = rule.get("value")
-        lhs = _get_by_path(call_info, path)
-        results.append(_compare(lhs, op, value))
 
-    if combiner == "any":
-        return any(results) if results else True
-    # default to "all"
-    return all(results) if results else True
+    for i, rule in enumerate(rules):
+        if "rules" in rule:  # nested group
+            matched, subfailed = evaluate_conditions_group(rule, call_info, f"{path}.{i}")
+            results.append(matched)
+            failed.extend(subfailed)
+        else:
+            field = rule.get("field")
+            operator = rule.get("operator", "equals")
+            expected = rule.get("value", "")
+            actual = call_info.get(field)
+            matched = evaluate_single_condition(actual, operator, expected)
+            results.append(matched)
+            if not matched:
+                failed.append(f"{path}.{field}: expected {expected!r}, got {actual!r}")
+
+    if combiner == "all":
+        group_match = all(results)
+    elif combiner == "any":
+        group_match = any(results)
+    else:
+        group_match = False
+        logger.warning(f"Invalid combiner: {combiner}")
+
+    return group_match, failed
+
+
+def evaluate_conditions(conditions: Dict, call_info: Dict[str, Any]) -> Dict:
+    """
+    Top-level evaluator that matches call_info against nested conditions.
+    Returns dict with match status and failure details.
+    """
+    try:
+        matched, failed = evaluate_conditions_group(conditions, call_info)
+        return {
+            "matched": matched,
+            "failed_conditions": failed,
+        }
+    except Exception as e:
+        logger.exception(f"Error evaluating conditions: {e}")
+        return {"matched": False, "failed_conditions": [str(e)]}

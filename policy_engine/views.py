@@ -88,11 +88,12 @@ def logic_editor(request, rule_id):
     return render(request, "policy_engine/logic_editor.html", context)
 
 
-@csrf_exempt  # frontend fetch can call directly (you can secure later)
+@csrf_exempt
 @require_POST
 def preview_logic(request, rule_id):
     """
     Evaluate the current logic configuration against an optional call_info payload.
+    Supports nested AND/OR groups.
     """
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
 
@@ -105,25 +106,20 @@ def preview_logic(request, rule_id):
 
         logger.debug("Preview request: rule=%s type=%s", rule.id, logic_type)
 
-        # --- Simulate evaluation logic ---
-        match = True
-        failed_conditions = []
-        for key, expected in conditions.items():
-            actual = call_info.get(key)
-            if actual != expected:
-                match = False
-                failed_conditions.append({key: {"expected": expected, "actual": actual}})
-
-        result = {
-            "matched": match,
-            "failed_conditions": failed_conditions,
-            "evaluated_response": response if match else {},
-        }
+        # Evaluate nested conditions recursively
+        result = evaluate_conditions(conditions, call_info)
 
         logger.debug("Preview result: %s", result)
-        return JsonResponse({"success": True, "result": result})
+
+        return JsonResponse({
+            "success": True,
+            "result": {
+                "matched": result["matched"],
+                "failed_conditions": result["failed_conditions"],
+                "evaluated_response": response if result["matched"] else {},
+            },
+        })
 
     except Exception as e:
         logger.exception("Preview logic error: %s", e)
         return JsonResponse({"success": False, "error": str(e)}, status=400)
-    
