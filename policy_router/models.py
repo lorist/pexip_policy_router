@@ -1,4 +1,5 @@
 from django.db import models
+from django.urls import reverse
 from django.core.exceptions import ValidationError
 import json
 import re
@@ -66,6 +67,15 @@ class PolicyProxyRule(models.Model):
         help_text="Source IP or FQDN of the requesting Infinity node"
     )
 
+    advanced_logic_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable advanced logic editor for this rule (participant & service policies)."
+    )
+
+    def get_advanced_logic_url(self):
+        from django.urls import reverse
+        return reverse("policy_engine:logic_editor", args=[self.id])
+    
     def clean(self):
         """Ensure DB consistency and detect duplicate or overlapping regex patterns."""
         import re

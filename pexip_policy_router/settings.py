@@ -15,6 +15,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "policy_router",
+    "policy_engine.apps.PolicyEngineConfig",
     "widget_tweaks",
 ]
 
@@ -74,36 +75,105 @@ ENABLE_WEB_AUTH = True        # Require login for web views (/rules)
 ENABLE_POLICY_AUTH = False     # Require Basic Auth for policy endpoints
 
 # Logging config - https://docs.djangoproject.com/en/5.2/topics/logging/
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False, # Important: Set to False to merge with Django's default loggers
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {funcName} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname}: {module}.{funcName}: {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': True,
-        },
-        'policy_router.views': { #  Modules
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': False, # Prevent messages from propagating to parent loggers
-        },
+
+# Jon - Adding colours so my logs stand out while in dev. Can delete later
+import sys
+import logging
+class ColorFormatter(logging.Formatter):
+    """Adds ANSI colors to console logs if output is a TTY."""
+    COLORS = {
+        "DEBUG": "\033[37m",   # White
+        "INFO": "\033[36m",    # Cyan
+        "WARNING": "\033[33m", # Yellow
+        "ERROR": "\033[31m",   # Red
+        "CRITICAL": "\033[41m" # Red background
     }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        base = super().format(record)
+        if sys.stdout.isatty():  # only colorize in interactive terminals
+            color = self.COLORS.get(record.levelname, "")
+            return f"{color}{base}{self.RESET}"
+        return base
+
+### original logs preserved so as not to piss Jon off
+# LOGGING = {
+#     'version': 1,
+#     'disable_existing_loggers': False, # Important: Set to False to merge with Django's default loggers
+#     'formatters': {
+#         'verbose': {
+#             'format': '{levelname} {asctime} {module} {funcName} {process:d} {thread:d} {message}',
+#             'style': '{',
+#         },
+#         'simple': {
+#             'format': '{levelname}: {module}.{funcName}: {message}',
+#             'style': '{',
+#         },
+#     },
+#     'handlers': {
+#         'console': {
+#             'level': 'DEBUG',
+#             'class': 'logging.StreamHandler',
+#             'formatter': 'simple',
+#         },
+#     },
+#     'loggers': {
+#         'django': {
+#             'handlers': ['console'],
+#             'level': 'INFO',
+#             'propagate': True,
+#         },
+#         'policy_router.views': { #  Modules
+#             'handlers': ['console'],
+#             'level': 'DEBUG',
+#             'propagate': False, # Prevent messages from propagating to parent loggers
+#         },
+#     }
+# }
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {funcName} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname}: {module}.{funcName}: {message}",
+            "style": "{",
+        },
+        "colored": {
+            "()": ColorFormatter,
+            "format": "[{asctime}] {levelname}: {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "colored",   # use colorized output
+        },
+    },
+    "loggers": {
+        # Django core
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        # Policy Router
+        "policy_router.views": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        # ✅ Policy Engine (now colored & separated)
+        "policy_engine": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+    },
 }

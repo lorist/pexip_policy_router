@@ -41,6 +41,7 @@ class PolicyProxyRuleForm(forms.ModelForm):
             "override_participant_response",
             "basic_auth_username",
             "basic_auth_password",
+            "advanced_logic_enabled",
         ]
         labels = {
             "always_continue_service": "Custom response (Service)",

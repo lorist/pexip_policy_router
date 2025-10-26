@@ -1,0 +1,30 @@
+<div class="col-12">
+  <div class="form-check form-switch">
+    {{ form.enabled.as_widget|safe }}
+    <label class="form-check-label">Enabled</label>
+    {% if form.enabled.errors %}<div class="text-danger small">{{ form.enabled.errors }}</div>{% endif %}
+  </div>
+</div>
+
+<div class="col-12">
+  <label class="form-label">Description (optional)</label>
+  {{ form.description }}
+  {% if form.description.errors %}<div class="text-danger small">{{ form.description.errors }}</div>{% endif %}
+</div>
+
+<div class="col-md-6">
+  <label class="form-label">Conditions (JSON)</label>
+  {{ form.conditions_text }}
+  <div class="form-text">
+    Example:
+    <code>{"combiner":"all","rules":[{"path":"protocol","op":"eq","value":"webrtc"}]}</code>
+  </div>
+  {% if form.conditions_text.errors %}<div class="text-danger small mt-1">{{ form.conditions_text.errors }}</div>{% endif %}
+</div>
+
+<div class="col-md-6">
+  <label class="form-label">Response (JSON)</label>
+  {{ form.response_text }}
+  <div class="form-text">Will be returned when conditions evaluate to true.</div>
+  {% if form.response_text.errors %}<div class="text-danger small mt-1">{{ form.response_text.errors }}</div>{% endif %}
+</div>

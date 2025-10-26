@@ -11,7 +11,7 @@ from django.conf import settings
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404, render
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from django.urls import reverse
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -22,6 +22,7 @@ from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
+from policy_engine.models import PolicyLogic
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
@@ -708,7 +709,23 @@ def rule_edit(request, pk):
             return redirect(reverse("policy_router:rule_list"))
     else:
         form = PolicyProxyRuleForm(instance=rule)
-    return render(request, "policy_router/rule_form.html", {"form": form})
+        # Determine if advanced participant/service logic exist
+        from policy_engine.models import PolicyLogic
+        logic_exists = PolicyLogic.objects.filter(rule=rule).exists()
+        participant_logic = PolicyLogic.objects.filter(rule=rule, rule_type="participant").first()
+        service_logic = PolicyLogic.objects.filter(rule=rule, rule_type="service").first()
+
+        return render(
+            request,
+            "policy_router/rule_form.html",
+            {
+                "form": form,
+                "rule": rule,
+                "logic_exists": logic_exists,
+                "participant_logic": participant_logic,
+                "service_logic": service_logic,
+            },
+        )
 
 @maybe_protected
 def rule_delete(request, pk):
@@ -843,6 +860,67 @@ def rule_check_duplicates(request):
 
     return render(request, "policy_router/rule_duplicates.html", {
         "duplicates": duplicates,
+    })
+
+@require_GET
+def advanced_logic_state(request, rule_id: int):
+    """Return the full logic state for a given rule."""
+    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    participant_exists = PolicyLogic.objects.filter(rule=rule, rule_type="participant").exists()
+    service_exists = PolicyLogic.objects.filter(rule=rule, rule_type="service").exists()
+    logic_exists = participant_exists or service_exists
+
+    return JsonResponse({
+        "success": True,
+        "rule_id": rule.id,
+        "advanced_logic_enabled": bool(rule.advanced_logic_enabled),
+        "logic_exists": logic_exists,
+        "participant_exists": participant_exists,
+        "service_exists": service_exists,
+    })
+
+
+@require_POST
+@transaction.atomic
+def toggle_advanced_logic(request, rule_id: int):
+    """
+    Toggle the advanced logic flag on a rule.
+
+    - When enabling: ensure both participant & service PolicyLogic objects exist.
+    - When disabling: delete all related PolicyLogic objects.
+    """
+    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    enable = not rule.advanced_logic_enabled
+
+    if enable:
+        # Create missing logic objects if enabling
+        for rtype in ("participant", "service"):
+            PolicyLogic.objects.get_or_create(
+                rule=rule,
+                rule_type=rtype,
+                defaults={"enabled": True, "conditions": {}, "response": {}},
+            )
+    else:
+        # Delete all logic objects if disabling
+        PolicyLogic.objects.filter(rule=rule).delete()
+
+    # The signal should keep rule.advanced_logic_enabled synced,
+    # but we’ll set and save it manually for immediate response
+    rule.advanced_logic_enabled = enable
+    rule.save(update_fields=["advanced_logic_enabled"])
+
+    # Compute final state to return
+    participant_exists = PolicyLogic.objects.filter(rule=rule, rule_type="participant").exists()
+    service_exists = PolicyLogic.objects.filter(rule=rule, rule_type="service").exists()
+    logic_exists = participant_exists or service_exists
+
+    return JsonResponse({
+        "success": True,
+        "rule_id": rule.id,
+        "advanced_logic_enabled": enable,
+        "logic_exists": logic_exists,
+        "participant_exists": participant_exists,
+        "service_exists": service_exists,
     })
 
 # -----------------------------

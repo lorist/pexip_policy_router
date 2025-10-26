@@ -1,0 +1,151 @@
+{% extends "policy_router/base.html" %}
+{% load static %}
+
+{% block title %}Advanced Logic Editor · {{ rule.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <h1 class="h3 mb-4">
+    🧠 Advanced Logic for Rule: 
+    <span class="text-primary">{{ rule.name }}</span>
+  </h1>
+  <p class="text-muted mb-4">
+    Define advanced <strong>participant</strong> and <strong>service</strong> logic for this rule.
+    Conditions are evaluated from <code>call_info</code> and determine the response returned.
+  </p>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'participant' %}active{% endif %}" href="?tab=participant">
+        Participant
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'service' %}active{% endif %}" href="?tab=service">
+        Service
+      </a>
+    </li>
+  </ul>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" class="row g-4">
+        {% csrf_token %}
+        <input type="hidden" name="active_tab" value="{{ active_tab }}"/>
+
+        {% if active_tab == 'participant' %}
+          {% with form=participant_form %}
+            {% include "policy_engine/partials/_logic_form.html" %}
+          {% endwith %}
+        {% else %}
+          {% with form=service_form %}
+            {% include "policy_engine/partials/_logic_form.html" %}
+          {% endwith %}
+        {% endif %}
+
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary" type="submit">💾 Save</button>
+          <button id="preview-btn" class="btn btn-outline-secondary" type="button">👁 Preview</button>
+          <a href="{% url 'policy_router:rule_edit' rule.id %}" class="btn btn-outline-dark ms-auto">
+            ← Back to Rule
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Preview section -->
+  <div class="card mt-4 shadow-sm">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <strong>Preview</strong>
+      <small class="text-muted">
+        Evaluate this logic against a sample <code>call_info</code> payload
+      </small>
+    </div>
+    <div class="card-body">
+      <div class="mb-2">
+        <label class="form-label">Sample <code>call_info</code> (JSON)</label>
+        <textarea id="sample-call-info" class="form-control font-monospace" rows="8" spellcheck="false" placeholder='{
+  "call_direction": "in",
+  "protocol": "webrtc",
+  "vendor": "pexip",
+  "participant": { "display_name": "Alice", "role": "guest" }
+}'></textarea>
+      </div>
+
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="badge text-bg-secondary" id="preview-status">Not run</span>
+        <small class="text-muted" id="preview-message"></small>
+      </div>
+
+      <div>
+        <label class="form-label">Returned JSON</label>
+        <pre class="bg-dark text-light p-3 rounded" id="preview-output">{}</pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const previewBtn = document.getElementById("preview-btn");
+  const previewStatus = document.getElementById("preview-status");
+  const previewMessage = document.getElementById("preview-message");
+  const previewOutput = document.getElementById("preview-output");
+  const sampleCallInfo = document.getElementById("sample-call-info");
+
+  function getActiveTab() {
+    const url = new URL(window.location.href);
+    return url.searchParams.get("tab") || "participant";
+  }
+
+  function collectFormData() {
+    const form = document.querySelector("form");
+    const fd = new FormData(form);
+    fd.set("tab", getActiveTab());
+    return fd;
+  }
+
+  previewBtn?.addEventListener("click", async () => {
+    previewStatus.textContent = "Running…";
+    previewStatus.className = "badge text-bg-warning";
+    previewMessage.textContent = "";
+    previewOutput.textContent = "{}";
+
+    const fd = collectFormData();
+    fd.set("sample_call_info", sampleCallInfo.value || "{}");
+
+    try {
+      const resp = await fetch("{{ request.path }}preview/", {
+        method: "POST",
+        headers: { "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value },
+        body: fd
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        previewStatus.textContent = "Error";
+        previewStatus.className = "badge text-bg-danger";
+        previewMessage.textContent = text;
+        return;
+      }
+
+      const data = await resp.json();
+      previewStatus.textContent = data.matched ? "Matched" : (data.enabled ? "No match" : "Disabled");
+      previewStatus.className = data.matched
+        ? "badge text-bg-success"
+        : (data.enabled ? "badge text-bg-secondary" : "badge text-bg-dark");
+      previewMessage.textContent = data.message || "";
+      previewOutput.textContent = JSON.stringify(data.returned || {}, null, 2);
+    } catch (e) {
+      previewStatus.textContent = "Error";
+      previewStatus.className = "badge text-bg-danger";
+      previewMessage.textContent = e?.message || String(e);
+    }
+  });
+});
+</script>
+{% endblock %}

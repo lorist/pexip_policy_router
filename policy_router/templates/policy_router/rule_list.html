@@ -210,6 +210,11 @@
                 <a href="{% url 'policy_router:rule_delete' rule.pk %}" class="btn btn-danger btn-sm flex-fill text-nowrap">
                   <i class="bi bi-trash"></i> Delete
                 </a>
+                {% if rule.advanced_logic_enabled %}
+                  <a href="{{ rule.get_advanced_logic_url }}" class="btn btn-sm btn-outline-dark">
+                    🧠 Advanced Logic
+                  </a>
+                {% endif %}
               </div>
             </td>
           </tr>

@@ -28,6 +28,10 @@ urlpatterns = [
     path("rules/reorder/", views.reorder_rules, name="rule_reorder"),
     path("rules/reorder/", views.rule_reorder, name="rule_reorder"),
     path("rules/check_duplicates/", views.rule_check_duplicates, name="rule_check_duplicates"),
+    # Advanced rule
+    path("rules/<int:rule_id>/toggle-advanced-logic/", views.toggle_advanced_logic, name="toggle_advanced_logic"),
+    path("rules/<int:rule_id>/advanced-logic-state/", views.advanced_logic_state, name="advanced_logic_state",),
+
 
 
     # Logs
