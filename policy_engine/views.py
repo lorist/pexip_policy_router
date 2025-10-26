@@ -10,8 +10,10 @@ from .models import PolicyLogic
 from .forms import PolicyLogicForm
 from .utils import evaluate_conditions
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger("policy_engine.views")
+
+# can probably get rid of this and the url when dev is finished
 from django.views.decorators.csrf import csrf_exempt
 @csrf_exempt
 def test_signal(request):
@@ -37,109 +39,81 @@ def test_signal(request):
     })
 
 @require_http_methods(["GET", "POST"])
-def logic_editor(request, rule_id: int):
+def logic_editor(request, rule_id):
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
 
+    # Ensure logic objects exist
     participant_logic, _ = PolicyLogic.objects.get_or_create(
-        rule=rule, rule_type=PolicyLogic.RuleType.PARTICIPANT, defaults={}
+        rule=rule,
+        rule_type="participant",
+        defaults={"enabled": True, "conditions": {}, "response": {}},
     )
     service_logic, _ = PolicyLogic.objects.get_or_create(
-        rule=rule, rule_type=PolicyLogic.RuleType.SERVICE, defaults={}
+        rule=rule,
+        rule_type="service",
+        defaults={"enabled": True, "conditions": {}, "response": {}},
     )
 
-    active_tab = request.POST.get("active_tab", request.GET.get("tab", "participant"))
+    if request.method == "GET":
+        logger.debug(
+            "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
+            rule.id,
+            participant_logic.id,
+            service_logic.id,
+        )
 
-    if request.method == "POST":
-        target = participant_logic if active_tab == "participant" else service_logic
-        form = PolicyLogicForm(request.POST, instance=target)
-        if form.is_valid():
-            form.save()
-            messages.success(request, f"{active_tab.capitalize()} logic saved.")
-            return redirect(
-                reverse("policy_engine:logic_editor", args=[rule.id]) + f"?tab={active_tab}"
-            )
+    elif request.method == "POST":
+        logger.info("🧠 Saving advanced logic for rule %s", rule.id)
+        updates = []
+
+        for logic in (participant_logic, service_logic):
+            ltype = logic.rule_type
+            try:
+                # Capture old state for diff
+                old_state = {
+                    "enabled": logic.enabled,
+                    "conditions": logic.conditions,
+                    "response": logic.response,
+                }
+
+                cond_json = request.POST.get(f"{ltype}_conditions", "{}")
+                resp_json = request.POST.get(f"{ltype}_response", "{}")
+                logic.conditions = json.loads(cond_json)
+                logic.response = json.loads(resp_json)
+                logic.enabled = bool(request.POST.get(f"{ltype}_enabled"))
+                logic.save()
+
+                # Diff detection
+                diffs = []
+                for k in ["enabled", "conditions", "response"]:
+                    if logic.__dict__.get(k) != old_state.get(k):
+                        diffs.append(k)
+
+                updates.append(f"{ltype}: updated {', '.join(diffs) or 'no changes'}")
+
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    "Invalid JSON for %s logic in rule %s: %s",
+                    ltype,
+                    rule.id,
+                    e,
+                )
+            except Exception as e:
+                logger.exception(
+                    "Unexpected error saving %s logic for rule %s: %s",
+                    ltype,
+                    rule.id,
+                    e,
+                )
+
+        if updates:
+            logger.info("Rule %s logic updates → %s", rule.id, "; ".join(updates))
         else:
-            messages.error(request, "Please fix the errors below.")
-            # keep other form bound to its instance (not posted)
-            other = service_logic if active_tab == "participant" else participant_logic
-            other_form = PolicyLogicForm(instance=other)
-            context = {
-                "rule": rule,
-                "participant_form": form if active_tab == "participant" else other_form,
-                "service_form": form if active_tab == "service" else other_form,
-                "active_tab": active_tab,
-            }
-            return render(request, "policy_engine/logic_editor.html", context)
-
-    participant_form = PolicyLogicForm(instance=participant_logic)
-    service_form = PolicyLogicForm(instance=service_logic)
+            logger.debug("Rule %s logic save completed: no changes detected", rule.id)
 
     context = {
         "rule": rule,
-        "participant_form": participant_form,
-        "service_form": service_form,
-        "active_tab": active_tab,
+        "participant_logic": participant_logic,
+        "service_logic": service_logic,
     }
     return render(request, "policy_engine/logic_editor.html", context)
-
-
-@require_http_methods(["POST"])
-def preview_logic(request, rule_id: int):
-    """
-    POST to preview endpoint with:
-      - tab: "participant" | "service"
-      - conditions_text: JSON (string)
-      - response_text: JSON (string)
-      - sample_call_info: JSON (string)
-      - enabled: "on" | "" (optional)
-    Returns a JSON payload describing whether the rule matches and what would be returned.
-    """
-    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
-    tab = request.POST.get("tab", "participant")
-    enabled = request.POST.get("enabled") == "on"
-
-    try:
-        conditions = json.loads(request.POST.get("conditions_text") or "{}")
-        if not isinstance(conditions, dict):
-            raise ValueError("conditions must be a JSON object")
-    except Exception as e:
-        return HttpResponseBadRequest(f"Invalid conditions JSON: {e}")
-
-    try:
-        response = json.loads(request.POST.get("response_text") or "{}")
-        if not isinstance(response, dict):
-            raise ValueError("response must be a JSON object")
-    except Exception as e:
-        return HttpResponseBadRequest(f"Invalid response JSON: {e}")
-
-    try:
-        sample_call_info = json.loads(request.POST.get("sample_call_info") or "{}")
-        if not isinstance(sample_call_info, dict):
-            raise ValueError("sample_call_info must be a JSON object")
-    except Exception as e:
-        return HttpResponseBadRequest(f"Invalid sample_call_info JSON: {e}")
-
-    if not enabled:
-        return JsonResponse(
-            {
-                "enabled": False,
-                "matched": False,
-                "returned": {},
-                "message": "Logic disabled — no response would be returned.",
-            }
-        )
-
-    matched = evaluate_conditions(sample_call_info, conditions)
-    returned = response if matched else {}
-    message = "Conditions matched." if matched else "Conditions did not match."
-
-    return JsonResponse(
-        {
-            "enabled": True,
-            "matched": matched,
-            "returned": returned,
-            "message": message,
-            "rule": rule.id,
-            "tab": tab,
-        }
-    )
