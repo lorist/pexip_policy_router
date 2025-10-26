@@ -1,7 +1,7 @@
 import json, logging
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
 
@@ -117,3 +117,42 @@ def logic_editor(request, rule_id):
         "service_logic": service_logic,
     }
     return render(request, "policy_engine/logic_editor.html", context)
+
+@csrf_exempt  # frontend fetch can call directly (you can secure later)
+@require_POST
+def preview_logic(request, rule_id):
+    """
+    Evaluate the current logic configuration against an optional call_info payload.
+    """
+    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        logic_type = payload.get("logic_type")
+        call_info = payload.get("call_info", {})
+        conditions = payload.get("conditions", {})
+        response = payload.get("response", {})
+
+        logger.debug("Preview request: rule=%s type=%s", rule.id, logic_type)
+
+        # --- Simulate evaluation logic ---
+        match = True
+        failed_conditions = []
+        for key, expected in conditions.items():
+            actual = call_info.get(key)
+            if actual != expected:
+                match = False
+                failed_conditions.append({key: {"expected": expected, "actual": actual}})
+
+        result = {
+            "matched": match,
+            "failed_conditions": failed_conditions,
+            "evaluated_response": response if match else {},
+        }
+
+        logger.debug("Preview result: %s", result)
+        return JsonResponse({"success": True, "result": result})
+
+    except Exception as e:
+        logger.exception("Preview logic error: %s", e)
+        return JsonResponse({"success": False, "error": str(e)}, status=400)

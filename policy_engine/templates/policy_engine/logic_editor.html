@@ -4,68 +4,104 @@
 {% block content %}
 <h2 class="mb-4">🧠 Advanced Logic for Rule: <strong>{{ rule.name }}</strong></h2>
 
-<form method="post">
+<form method="post" id="logic-form">
   {% csrf_token %}
 
-  <!-- Participant Logic -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <strong>Participant Logic</strong>
-      <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="participant_enabled"
-               name="participant_enabled" {% if participant_logic.enabled %}checked{% endif %}>
-        <label class="form-check-label" for="participant_enabled">Enabled</label>
-      </div>
-    </div>
-    <div class="card-body">
-      <div class="row g-4">
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Conditions (JSON)</label>
-          <textarea id="participant_conditions"
-                    name="participant_conditions"
-                    class="form-control json-textarea"
-                    rows="12">{{ participant_logic.conditions|safe }}</textarea>
-        </div>
+  <!-- Tabs Header -->
+  <ul class="nav nav-tabs" id="logicTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="participant-tab" data-bs-toggle="tab"
+              data-bs-target="#participant" type="button" role="tab"
+              aria-controls="participant" aria-selected="true">
+        👤 Participant Logic
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="service-tab" data-bs-toggle="tab"
+              data-bs-target="#service" type="button" role="tab"
+              aria-controls="service" aria-selected="false">
+        ⚙️ Service Logic
+      </button>
+    </li>
+  </ul>
 
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Response (JSON)</label>
-          <textarea id="participant_response"
-                    name="participant_response"
-                    class="form-control json-textarea"
-                    rows="12">{{ participant_logic.response|safe }}</textarea>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Tabs Content -->
+  <div class="tab-content p-3 border border-top-0 rounded-bottom bg-body-tertiary" id="logicTabsContent">
 
-  <!-- Service Logic -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <strong>Service Logic</strong>
-      <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="service_enabled"
-               name="service_enabled" {% if service_logic.enabled %}checked{% endif %}>
-        <label class="form-check-label" for="service_enabled">Enabled</label>
-      </div>
-    </div>
-    <div class="card-body">
-      <div class="row g-4">
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Conditions (JSON)</label>
-          <textarea id="service_conditions"
-                    name="service_conditions"
-                    class="form-control json-textarea"
-                    rows="12">{{ service_logic.conditions|safe }}</textarea>
+    <!-- ===================== Participant Tab ===================== -->
+    <div class="tab-pane fade show active" id="participant" role="tabpanel" aria-labelledby="participant-tab">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Participant Logic</strong>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="participant_enabled"
+                   name="participant_enabled" {% if participant_logic.enabled %}checked{% endif %}>
+            <label class="form-check-label" for="participant_enabled">Enabled</label>
+          </div>
         </div>
+        <div class="card-body">
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Conditions (JSON)</label>
+              <textarea id="participant_conditions"
+                        name="participant_conditions"
+                        class="form-control json-textarea"
+                        rows="12">{{ participant_logic.conditions|safe }}</textarea>
+            </div>
 
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Response (JSON)</label>
-          <textarea id="service_response"
-                    name="service_response"
-                    class="form-control json-textarea"
-                    rows="12">{{ service_logic.response|safe }}</textarea>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Response (JSON)</label>
+              <textarea id="participant_response"
+                        name="participant_response"
+                        class="form-control json-textarea"
+                        rows="12">{{ participant_logic.response|safe }}</textarea>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer text-end">
+          <button type="button" class="btn btn-outline-primary btn-sm preview-btn" data-type="participant">🔍 Preview</button>
         </div>
       </div>
+
+      <div id="participant-preview" class="mt-3"></div>
+    </div>
+
+    <!-- ===================== Service Tab ===================== -->
+    <div class="tab-pane fade" id="service" role="tabpanel" aria-labelledby="service-tab">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Service Logic</strong>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="service_enabled"
+                   name="service_enabled" {% if service_logic.enabled %}checked{% endif %}>
+            <label class="form-check-label" for="service_enabled">Enabled</label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Conditions (JSON)</label>
+              <textarea id="service_conditions"
+                        name="service_conditions"
+                        class="form-control json-textarea"
+                        rows="12">{{ service_logic.conditions|safe }}</textarea>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Response (JSON)</label>
+              <textarea id="service_response"
+                        name="service_response"
+                        class="form-control json-textarea"
+                        rows="12">{{ service_logic.response|safe }}</textarea>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer text-end">
+          <button type="button" class="btn btn-outline-primary btn-sm preview-btn" data-type="service">🔍 Preview</button>
+        </div>
+      </div>
+
+      <div id="service-preview" class="mt-3"></div>
     </div>
   </div>
 
@@ -79,6 +115,8 @@
 document.addEventListener("DOMContentLoaded", () => {
   const theme = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "dracula" : "eclipse";
 
+  // --- Initialize CodeMirror editors ---
+  const editors = {};
   document.querySelectorAll(".json-textarea").forEach(textarea => {
     try {
       const parsed = JSON.parse(textarea.value);
@@ -95,8 +133,87 @@ document.addEventListener("DOMContentLoaded", () => {
         theme: theme,
       });
       editor.setSize("100%", "350px");
+      editors[textarea.id] = editor;
     }
   });
+
+  // --- Remember selected tab in URL ---
+  const urlParams = new URLSearchParams(window.location.search);
+  const tab = urlParams.get("tab");
+  if (tab) {
+    const triggerEl = document.querySelector(`[data-bs-target="#${tab}"]`);
+    if (triggerEl) new bootstrap.Tab(triggerEl).show();
+  }
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(btn => {
+    btn.addEventListener("shown.bs.tab", e => {
+      const newTab = e.target.getAttribute("data-bs-target").substring(1);
+      const url = new URL(window.location);
+      url.searchParams.set("tab", newTab);
+      history.replaceState(null, "", url);
+    });
+  });
+
+  // --- Preview Button Handler ---
+  document.querySelectorAll(".preview-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const type = btn.dataset.type;
+      const condEditor = editors[`${type}_conditions`];
+      const respEditor = editors[`${type}_response`];
+      const previewDiv = document.getElementById(`${type}-preview`);
+      previewDiv.innerHTML = "";
+
+      try {
+        const conditions = JSON.parse(condEditor.getValue());
+        const response = JSON.parse(respEditor.getValue());
+
+        // Optional mock call_info (in a real app you can make this editable)
+        const call_info = {
+          call_direction: "in",
+          protocol: "sip",
+          vendor: "pexip",
+          registered: true,
+        };
+
+        const res = await fetch(`{{ request.path }}preview/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            logic_type: type,
+            conditions: conditions,
+            response: response,
+            call_info: call_info,
+          }),
+        });
+
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || "Preview failed");
+
+        const result = data.result;
+        const matched = result.matched ? "✅ Match" : "⚪ No match";
+
+        const html = `
+          <div class="card border-${result.matched ? "success" : "warning"} shadow-sm">
+            <div class="card-header bg-${result.matched ? "success" : "warning"}-subtle fw-bold">
+              ${matched} – ${type.charAt(0).toUpperCase() + type.slice(1)} Evaluation
+            </div>
+            <div class="card-body">
+              <h6 class="fw-semibold">Evaluated Response</h6>
+              <pre class="bg-body-tertiary p-2 border rounded"><code>${JSON.stringify(result.evaluated_response, null, 2)}</code></pre>
+              ${
+                !result.matched && result.failed_conditions.length
+                  ? `<h6 class="fw-semibold mt-3">Failed Conditions</h6>
+                    <pre class="bg-body-tertiary p-2 border rounded"><code>${JSON.stringify(result.failed_conditions, null, 2)}</code></pre>`
+                  : ""
+              }
+            </div>
+          </div>`;
+        previewDiv.innerHTML = html;
+      } catch (e) {
+        previewDiv.innerHTML = `<div class="alert alert-danger">❌ Error: ${e.message}</div>`;
+      }
+    });
+  });
+
 });
 </script>
 {% endblock %}
