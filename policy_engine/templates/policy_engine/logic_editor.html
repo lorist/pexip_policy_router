@@ -123,24 +123,23 @@
     <form method="post" class="card shadow-sm mt-3 p-3">
       {% csrf_token %}
       <input type="hidden" name="logic_type" value="service">
-
+  
       <h5 class="mb-3">Service Logic</h5>
-
+  
       <div class="form-check form-switch mb-3">
         {{ service_form.enabled }}
         <label class="form-check-label" for="{{ service_form.enabled.id_for_label }}">
           Enabled
         </label>
       </div>
-
+  
       <div class="mb-3">
         {{ service_form.description.label_tag }}
         {{ service_form.description }}
       </div>
-
+  
       <h6 class="mt-3 mb-2">Conditions</h6>
-
-      <!-- Combiner selection -->
+  
       <div class="d-flex align-items-center mb-2">
         <label class="me-2 fw-semibold">Match:</label>
         <select class="form-select form-select-sm w-auto combiner-select">
@@ -148,8 +147,7 @@
           <option value="any">Any (OR)</option>
         </select>
       </div>
-
-      <!-- Condition rows container -->
+  
       <div id="service-conditions" class="condition-group border rounded p-2 bg-light">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <div>
@@ -166,347 +164,53 @@
         </div>
         <div class="conditions-list"></div>
       </div>
+  
       <script id="service_conditions_json" type="application/json">
         {{ service_conditions_json|safe }}
       </script>
+  
       <input type="hidden" name="service_conditions" value="">
-
-      <!-- Add condition button -->
-      <div class="text-end mb-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm add-condition" data-type="service">
-          ➕ Add Condition
-        </button>
-      </div>
-
-      <hr>
-
-      <h6 class="mt-3 mb-2">Response</h6>
-      <div class="row g-2 mb-3">
-        <div class="col-md-4">{{ participant_form.response_action }}</div>
-        <div class="col-md-8">{{ participant_form.response_reason }}</div>
-      </div>
-      
-      <!-- Participant Response Builder -->
-      <h6 class="mt-4 mb-2">Participant Response Builder</h6>
+  
+      <!-- ========================================================= -->
+      <!-- SERVICE RESPONSE BUILDER -->
+      <!-- ========================================================= -->
+      <h6 class="mt-4 mb-2">Service Response Builder</h6>
       <p class="text-muted small">
-        Define the fields that will be returned in the participant properties response.
+        Define the fields that will be returned in the service configuration response.
         Leave blank to omit a field from the JSON response.
       </p>
-      
-      <div id="participant-response-builder" class="border rounded p-3 bg-white"></div>
-      <input type="hidden" name="participant_response_json" value="{{ participant_logic.response|default:'{}'|escapejs }}">
-      <script id="participant_response_schema_json" type="application/json">
-        {{ participant_response_schema|safe }}
+  
+      <div id="service-response-builder" class="border rounded p-3 bg-white"></div>
+      <input type="hidden" name="service_response_json" value="{{ service_logic.response|default:'{}'|escapejs }}">
+      <script id="service_response_schema_json" type="application/json">
+        {{ service_response_schema|safe }}
       </script>
-
-
+  
       <div class="text-end mt-4">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="service">
           🔍 Preview Logic
         </button>
         <button type="submit" class="btn btn-primary btn-sm">💾 Save Service</button>
       </div>
-
+  
       <div id="service-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></div>
     </form>
   </div>
+
 </div>
 <script id="participant_schema_json" type="application/json">
-  {{ participant_schema|safe }}
+  {{ participant_schema }}
 </script>
 <script id="service_schema_json" type="application/json">
-  {{ service_schema|safe }}
+  {{ service_schema }}
 </script>
-
-<!-- ========================================================= -->
-<!-- Schema JSON blocks (must be ABOVE the logic builder script) -->
-<!-- ========================================================= -->
-<script id="participant_schema_json" type="application/json">
-  {{ participant_schema|safe }}
+<script id="participant_response_schema_json" type="application/json">
+  {{ participant_response_schema }}
 </script>
-<script id="service_schema_json" type="application/json">
-  {{ service_schema|safe }}
+<script id="service_response_schema_json" type="application/json">
+  {{ service_response_schema }}
 </script>
-
-<!-- ========================================================= -->
-<!-- Nested Logic Builder + Participant Response Builder -->
-<!-- ========================================================= -->
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    console.log("🧩 Nested Logic Builder Ready");
-
-    const OPERATOR_SETS = {
-      string: ["equals", "not_equals", "contains", "starts_with", "ends_with", "regex_match", "in_list"],
-      number: ["equals", "not_equals", ">", "<", ">=", "<="],
-      boolean: ["is_true", "is_false"],
-      default: ["equals", "not_equals"]
-    };
-
-    const logicForms = {};
-
-    // Wait until schema <script> tags are available
-    function waitForSchemas() {
-      return new Promise(resolve => {
-        const check = () => {
-          const p = document.getElementById("participant_schema_json");
-          const s = document.getElementById("service_schema_json");
-          const r = document.getElementById("participant_response_schema_json");
-          if (p && s && r) resolve();
-          else setTimeout(check, 50);
-        };
-        check();
-      });
-    }
-
-    // --- Logic Builder UI helpers ---
-    function buildOperatorSelect(type = "string", selected = "equals") {
-      const ops = OPERATOR_SETS[type] || OPERATOR_SETS.default;
-      return `<select class="form-select form-select-sm condition-operator">
-      ${ops.map(o => `<option value="${o}" ${o === selected ? "selected" : ""}>${o}</option>`).join("")}
-    </select>`;
-    }
-
-    function buildFieldSelect(fields, selected = "") {
-      return `<select class="form-select form-select-sm condition-field">
-      ${Object.keys(fields).map(f => `<option value="${f}" ${f === selected ? "selected" : ""}>${f}</option>`).join("")}
-    </select>`;
-    }
-
-    function buildConditionRow(schema, field = "", operator = "equals", value = "") {
-      const fieldType = schema[field]?.type || "string";
-      return `
-      <div class="condition-row d-flex align-items-center mb-2">
-        <div class="flex-grow-1 me-2">${buildFieldSelect(schema, field)}</div>
-        <div class="me-2">${buildOperatorSelect(fieldType, operator)}</div>
-        <input type="text" class="form-control form-control-sm condition-value me-2" value="${value || ""}">
-        <button type="button" class="btn btn-sm btn-outline-danger remove-condition">✖</button>
-      </div>`;
-    }
-
-    function buildGroup() {
-      return `
-      <div class="condition-group border rounded p-2 mb-2 bg-white">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <div>
-            <label class="me-2 fw-semibold">Match:</label>
-            <select class="form-select form-select-sm w-auto group-combiner">
-              <option value="all">All (AND)</option>
-              <option value="any">Any (OR)</option>
-            </select>
-          </div>
-          <div>
-            <button type="button" class="btn btn-sm btn-outline-secondary add-condition">➕ Condition</button>
-            <button type="button" class="btn btn-sm btn-outline-info add-group">➕ Group</button>
-            <button type="button" class="btn btn-sm btn-outline-danger remove-group">✖</button>
-          </div>
-        </div>
-        <div class="conditions-list"></div>
-      </div>`;
-    }
-
-    // --- Logic JSON builders ---
-    function parseGroup(groupEl) {
-      const combiner = groupEl.querySelector(".group-combiner").value;
-      const rules = [];
-      groupEl.querySelectorAll(":scope > .conditions-list > *").forEach(el => {
-        if (el.classList.contains("condition-row")) {
-          rules.push({
-            field: el.querySelector(".condition-field").value,
-            operator: el.querySelector(".condition-operator").value,
-            value: el.querySelector(".condition-value").value
-          });
-        } else if (el.classList.contains("condition-group")) {
-          rules.push(parseGroup(el)); // recursion
-        }
-      });
-      return { combiner, rules };
-    }
-
-    function syncJSON(rootGroup, hiddenInput) {
-      hiddenInput.value = JSON.stringify(parseGroup(rootGroup), null, 2);
-    }
-
-    function renderGroupFromJSON(data, schema) {
-      const combiner = data.combiner || "all";
-      const temp = document.createElement("div");
-      temp.innerHTML = buildGroup().trim();
-      const groupEl = temp.firstElementChild;
-      groupEl.querySelector(".group-combiner").value = combiner;
-
-      const list = groupEl.querySelector(".conditions-list");
-      (data.rules || []).forEach(rule => {
-        if (rule.rules) list.appendChild(renderGroupFromJSON(rule, schema));
-        else {
-          const r = document.createElement("div");
-          r.innerHTML = buildConditionRow(schema, rule.field, rule.operator, rule.value).trim();
-          list.appendChild(r.firstElementChild);
-        }
-      });
-      return groupEl;
-    }
-
-    // --- Initialization ---
-    waitForSchemas().then(() => {
-      console.log("📦 Schemas detected — initializing logic forms...");
-
-      // =============================
-      // Logic Builder Initialization
-      // =============================
-      document.querySelectorAll("form").forEach(form => {
-        const typeInput = form.querySelector("input[name='logic_type']");
-        if (!typeInput) return;
-
-        const type = typeInput.value.trim();
-        const schemaEl = document.getElementById(`${type}_schema_json`);
-        if (!schemaEl) {
-          console.warn(`⚠️ Missing schema for ${type}`);
-          return;
-        }
-
-        const schema = JSON.parse(schemaEl.textContent);
-        const rootGroup = form.querySelector(`#${type}-conditions`);
-        const hidden = form.querySelector(`input[name='${type}_conditions']`);
-        if (!rootGroup || !hidden) return;
-
-        logicForms[type] = { schema, rootGroup, hidden };
-        console.log(`✅ Bound logic form for '${type}'`);
-
-        const existingJSONEl = document.getElementById(`${type}_conditions_json`);
-        let existing = {};
-        if (existingJSONEl) {
-          try {
-            existing = JSON.parse(existingJSONEl.textContent || "{}");
-            console.log(`📄 Parsed ${type} conditions:`, existing);
-          } catch (err) {
-            console.warn(`⚠️ Failed to parse existing ${type} logic JSON:`, err);
-          }
-        }
-
-        if (existing && existing.rules) {
-          const newGroup = renderGroupFromJSON(existing, schema);
-          rootGroup.innerHTML = newGroup.innerHTML;
-          console.log(`♻️ Rehydrated existing ${type} logic`);
-        }
-
-        form.addEventListener("input", () => syncJSON(rootGroup, hidden));
-      });
-
-      // ======================================
-      // 🧰 Participant Response Builder
-      // ======================================
-      const responseSchemaEl = document.getElementById("participant_response_schema_json");
-      if (responseSchemaEl) {
-        console.log("🧰 Participant Response Builder Ready");
-        const responseSchema = JSON.parse(responseSchemaEl.textContent);
-        const container = document.getElementById("participant-response-builder");
-        const hidden = document.querySelector("input[name='participant_response_json']");
-
-        // --- render form based on schema ---
-        Object.entries(responseSchema).forEach(([field, meta]) => {
-          let input = "";
-          const type = meta.type;
-
-          if (type === "bool") {
-            input = `<select class="form-select form-select-sm response-input" data-field="${field}">
-            <option value="">(unset)</option>
-            <option value="true">true</option>
-            <option value="false">false</option>
-          </select>`;
-          } else if (type === "enum") {
-            const opts = meta.choices
-              .map(c => `<option value="${c ?? ''}">${c ?? '(null)'}</option>`)
-              .join("");
-            input = `<select class="form-select form-select-sm response-input" data-field="${field}">${opts}</select>`;
-          } else if (type === "number") {
-            input = `<input type="number" class="form-control form-control-sm response-input" data-field="${field}">`;
-          } else if (type === "list") {
-            input = `<textarea class="form-control form-control-sm response-input" rows="2" data-field="${field}" placeholder='[{"mix_name": "main"}]'></textarea>`;
-          } else {
-            input = `<input type="text" class="form-control form-control-sm response-input" data-field="${field}">`;
-          }
-
-          container.insertAdjacentHTML(
-            "beforeend",
-            `<div class="mb-2">
-            <label class="form-label small fw-semibold">${field}</label>
-            ${input}
-          </div>`
-          );
-        });
-
-        // --- rehydrate saved data ---
-        try {
-          const existingResponse = JSON.parse(hidden.value || "{}");
-          for (const [field, value] of Object.entries(existingResponse)) {
-            const input = container.querySelector(`[data-field="${field}"]`);
-            if (!input) continue;
-            if (input.tagName === "SELECT" || input.tagName === "TEXTAREA" || input.tagName === "INPUT") {
-              input.value = typeof value === "object" ? JSON.stringify(value) : value;
-            }
-          }
-          console.log("♻️ Rehydrated existing participant response");
-        } catch (e) {
-          console.warn("⚠️ Could not parse existing participant response JSON:", e);
-        }
-
-        // --- sync JSON to hidden field ---
-        container.addEventListener("input", () => {
-          const data = {};
-          container.querySelectorAll(".response-input").forEach(el => {
-            let value = el.value.trim();
-            if (value === "") return;
-            const field = el.dataset.field;
-            const type = responseSchema[field]?.type;
-            if (type === "bool") value = value === "true";
-            else if (type === "number") value = Number(value);
-            else if (type === "list") {
-              try { value = JSON.parse(value); } catch { /* ignore parse error */ }
-            }
-            data[field] = value;
-          });
-          hidden.value = JSON.stringify(data, null, 2);
-        });
-      }
-    });
-
-    // =============================
-    // Global button event delegation
-    // =============================
-    document.addEventListener("click", e => {
-      const btn = e.target.closest("button");
-      if (!btn) return;
-
-      const form = btn.closest("form");
-      if (!form) return;
-
-      const type = form.querySelector("input[name='logic_type']")?.value;
-      if (!type || !logicForms[type]) {
-        console.warn(`⚠️ No logic form found for type '${type}'`);
-        return;
-      }
-
-      const { schema, rootGroup, hidden } = logicForms[type];
-      const targetGroup = btn.closest(".condition-group") || rootGroup;
-      const list = targetGroup.querySelector(".conditions-list");
-
-      if (btn.classList.contains("add-condition")) {
-        list.insertAdjacentHTML("beforeend", buildConditionRow(schema));
-        console.log(`➕ Added condition to ${type}`);
-      } else if (btn.classList.contains("add-group")) {
-        list.insertAdjacentHTML("beforeend", buildGroup());
-        console.log(`➕ Added group to ${type}`);
-      } else if (btn.classList.contains("remove-condition")) {
-        btn.closest(".condition-row")?.remove();
-        console.log(`🗑️ Removed condition from ${type}`);
-      } else if (btn.classList.contains("remove-group")) {
-        btn.closest(".condition-group")?.remove();
-        console.log(`🗑️ Removed group from ${type}`);
-      }
-
-      syncJSON(rootGroup, hidden);
-    });
-  });
-</script>
-
+{% load static %}
+<script type="module" src="{% static 'policy_engine/js/logic_editor.js' %}"></script>
 
 {% endblock %}

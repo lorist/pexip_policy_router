@@ -4,12 +4,12 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods, require_POST
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
-from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PARTICIPANT_RESPONSE_SCHEMA
+from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PARTICIPANT_RESPONSE_SCHEMA, SERVICE_RESPONSE_SCHEMA
 from policy_router.models import PolicyProxyRule
 from .models import PolicyLogic
 from .forms import PolicyLogicForm
 from .utils import evaluate_conditions
-
+from django.utils.safestring import mark_safe
 
 logger = logging.getLogger("policy_engine.views")
 
@@ -116,13 +116,19 @@ def logic_editor(request, rule_id):
         "service_logic": service_logic,
         "participant_form": participant_form,
         "service_form": service_form,
-        "service_schema": json.dumps(SERVICE_CALL_INFO_SCHEMA),
-        "participant_schema": json.dumps(PARTICIPANT_CALL_INFO_SCHEMA),
-        "participant_conditions_json": ensure_json(participant_logic.conditions),
-        "participant_response_schema": json.dumps(PARTICIPANT_RESPONSE_SCHEMA),
-        "service_conditions_json": ensure_json(service_logic.conditions),
-    }
 
+        # Call Info schemas
+        "service_schema": mark_safe(json.dumps(SERVICE_CALL_INFO_SCHEMA, default=str)),
+        "participant_schema": mark_safe(json.dumps(PARTICIPANT_CALL_INFO_SCHEMA, default=str)),
+
+        # Logic JSON
+        "participant_conditions_json": ensure_json(participant_logic.conditions),
+        "service_conditions_json": ensure_json(service_logic.conditions),
+
+        # Response builder schemas
+        "participant_response_schema": mark_safe(json.dumps(PARTICIPANT_RESPONSE_SCHEMA, default=str)),
+        "service_response_schema": mark_safe(json.dumps(SERVICE_RESPONSE_SCHEMA, default=str)),
+    }
     logger.debug(
         "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
         rule.id,

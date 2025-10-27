@@ -8,3 +8,8 @@ urlpatterns = [
     path("", include("django.contrib.auth.urls")),
     path("policy-engine/", include("policy_engine.urls", namespace="policy_engine")),
 ]
+
+#### if running behid an RP like nginx
+# import settings
+# if settings.DEBUG:
+#     urlpatterns += static(settings.STATIC_URL, document_root=settings.BASE_DIR / "static")
