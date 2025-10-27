@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods, require_POST
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
-from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA
+from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PARTICIPANT_RESPONSE_SCHEMA
 from policy_router.models import PolicyProxyRule
 from .models import PolicyLogic
 from .forms import PolicyLogicForm
@@ -54,7 +54,6 @@ def logic_editor(request, rule_id):
         defaults={"enabled": False, "conditions": {}, "response": {}},
     )
 
-    # instantiate forms separately
     participant_form = PolicyLogicForm(
         request.POST or None, instance=participant_logic, prefix="participant"
     )
@@ -62,13 +61,54 @@ def logic_editor(request, rule_id):
         request.POST or None, instance=service_logic, prefix="service"
     )
 
+    def ensure_json(data):
+        """Return a valid JSON string regardless of input type."""
+        if isinstance(data, str):
+            try:
+                data = json.loads(data.replace("'", '"'))
+            except json.JSONDecodeError:
+                return "{}"
+        return json.dumps(data or {})
+
+    # -----------------------
+    # Handle POST
+    # -----------------------
     if request.method == "POST":
         target = request.POST.get("logic_type")
-        form = participant_form if target == "participant" else service_form
-        if form.is_valid():
-            form.save()
-            logger.info("Saved %s logic for rule %s", target, rule.id)
+        print("🧠 POST keys:", list(request.POST.keys()))
 
+        if target == "participant":
+            form = participant_form
+            hidden_data = request.POST.get("participant_conditions", "{}")
+            logic_instance = participant_logic
+        else:
+            form = service_form
+            hidden_data = request.POST.get("service_conditions", "{}")
+            logic_instance = service_logic
+
+        print(f"🔍 {target}_conditions =", hidden_data)
+
+        if form.is_valid():
+            # Save regular fields
+            form.save(commit=False)
+
+            # Save JSON logic safely
+            try:
+                parsed = json.loads(hidden_data)
+                logic_instance.conditions = parsed
+            except json.JSONDecodeError:
+                logger.warning("⚠️ Invalid JSON for %s conditions", target)
+                logic_instance.conditions = {}
+
+            logic_instance.save()
+            logger.info("💾 Saved %s logic for rule %s", target, rule.id)
+
+            # Redirect back to correct tab (optional)
+            return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={target}")
+
+    # -----------------------
+    # Render page
+    # -----------------------
     context = {
         "rule": rule,
         "tab": tab,
@@ -78,7 +118,11 @@ def logic_editor(request, rule_id):
         "service_form": service_form,
         "service_schema": json.dumps(SERVICE_CALL_INFO_SCHEMA),
         "participant_schema": json.dumps(PARTICIPANT_CALL_INFO_SCHEMA),
+        "participant_conditions_json": ensure_json(participant_logic.conditions),
+        "participant_response_schema": json.dumps(PARTICIPANT_RESPONSE_SCHEMA),
+        "service_conditions_json": ensure_json(service_logic.conditions),
     }
+
     logger.debug(
         "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
         rule.id,
@@ -86,6 +130,7 @@ def logic_editor(request, rule_id):
         service_logic.id,
     )
     return render(request, "policy_engine/logic_editor.html", context)
+
 
 
 @csrf_exempt
