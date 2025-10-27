@@ -127,6 +127,51 @@ PARTICIPANT_RESPONSE_SCHEMA = {
     "wants_presentation_in_mix": {"type": "bool"},
 }
 
+AUTOMATIC_PARTICIPANT_SCHEMA = {
+    "local_alias": {"type": "string", "required": True, "description": "The calling or 'from' alias."},
+    "protocol": {
+        "type": "enum",
+        "choices": ["h323", "sip", "mssip", "rtmp"],
+        "required": True,
+        "description": "Protocol to use to place the outgoing call."
+    },
+    "remote_alias": {"type": "string", "required": True, "description": "Alias of the endpoint to call."},
+    "role": {
+        "type": "enum",
+        "choices": ["chair", "guest"],
+        "required": True,
+        "description": "Privileges in the conference."
+    },
+    "call_type": {
+        "type": "enum",
+        "choices": ["video", "video-only", "audio"],
+        "required": False,
+        "description": "Call capability."
+    },
+    "dtmf_sequence": {"type": "string", "required": False, "description": "DTMF sequence to send after call connects."},
+    "keep_conference_alive": {
+        "type": "enum",
+        "choices": [
+            "keep_conference_alive",
+            "keep_conference_alive_if_multiple",
+            "keep_conference_alive_never"
+        ],
+        "required": False,
+        "description": "Determines whether the conference ends automatically."
+    },
+    "local_display_name": {"type": "string", "required": False, "description": "Display name for the calling alias."},
+    "presentation_url": {"type": "string", "required": False, "description": "RTMP presentation stream destination."},
+    "remote_display_name": {"type": "string", "required": False, "description": "Friendly name for this participant."},
+    "routing": {
+        "type": "enum",
+        "choices": ["manual", "routing_rule"],
+        "required": False,
+        "description": "Routing mode for the call."
+    },
+    "streaming": {"type": "bool", "required": False, "description": "Whether this participant is a streaming/recording device."},
+    "system_location_name": {"type": "string", "required": False, "description": "System location for call placement."}
+}
+
 SERVICE_RESPONSE_SCHEMA = {
     # === Core Required Fields ===
     "name": {
@@ -185,7 +230,12 @@ SERVICE_RESPONSE_SCHEMA = {
 
     # === Conference & Lecture ===
     "allow_guests": {"type": "bool", "default": False, "applies_to": ["conference", "lecture"]},
-    "automatic_participants": {"type": "list", "applies_to": ["conference", "lecture"]},
+    "automatic_participants": {
+        "type": "list",
+        "item_schema": AUTOMATIC_PARTICIPANT_SCHEMA,
+        "required": False,
+        "description": "Participants automatically dialed when the service starts."
+    },
     "breakout_rooms": {"type": "bool", "default": False, "applies_to": ["conference", "lecture"]},
     "call_type": {
         "type": "enum",
