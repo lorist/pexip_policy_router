@@ -62,13 +62,13 @@ def logic_editor(request, rule_id):
     )
 
     def ensure_json(data):
-        """Return a valid JSON string regardless of input type."""
+        """Return valid JSON string regardless of input type."""
         if isinstance(data, str):
             try:
                 data = json.loads(data.replace("'", '"'))
             except json.JSONDecodeError:
                 return "{}"
-        return json.dumps(data or {})
+        return json.dumps(data or {}, default=str)
 
     # -----------------------
     # Handle POST
@@ -79,31 +79,39 @@ def logic_editor(request, rule_id):
 
         if target == "participant":
             form = participant_form
-            hidden_data = request.POST.get("participant_conditions", "{}")
             logic_instance = participant_logic
+            hidden_conditions = request.POST.get("participant_conditions", "{}")
+            hidden_response = request.POST.get("participant_response_json", "{}")
         else:
             form = service_form
-            hidden_data = request.POST.get("service_conditions", "{}")
             logic_instance = service_logic
+            hidden_conditions = request.POST.get("service_conditions", "{}")
+            hidden_response = request.POST.get("service_response_json", "{}")
 
-        print(f"🔍 {target}_conditions =", hidden_data)
+        print(f"🔍 {target}_conditions =", hidden_conditions)
+        print(f"🔍 {target}_response =", hidden_response)
 
         if form.is_valid():
-            # Save regular fields
             form.save(commit=False)
 
-            # Save JSON logic safely
+            # Parse and save conditions
             try:
-                parsed = json.loads(hidden_data)
-                logic_instance.conditions = parsed
+                logic_instance.conditions = json.loads(hidden_conditions)
             except json.JSONDecodeError:
                 logger.warning("⚠️ Invalid JSON for %s conditions", target)
                 logic_instance.conditions = {}
 
+            # Parse and save response
+            try:
+                logic_instance.response = json.loads(hidden_response)
+            except json.JSONDecodeError:
+                logger.warning("⚠️ Invalid JSON for %s response", target)
+                logic_instance.response = {}
+
             logic_instance.save()
             logger.info("💾 Saved %s logic for rule %s", target, rule.id)
 
-            # Redirect back to correct tab (optional)
+            # Redirect back to same tab
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={target}")
 
     # -----------------------
@@ -125,10 +133,11 @@ def logic_editor(request, rule_id):
         "participant_conditions_json": ensure_json(participant_logic.conditions),
         "service_conditions_json": ensure_json(service_logic.conditions),
 
-        # Response builder schemas
+        # Response schemas
         "participant_response_schema": mark_safe(json.dumps(PARTICIPANT_RESPONSE_SCHEMA, default=str)),
         "service_response_schema": mark_safe(json.dumps(SERVICE_RESPONSE_SCHEMA, default=str)),
     }
+
     logger.debug(
         "Logic editor opened for rule %s (participant_id=%s, service_id=%s)",
         rule.id,
@@ -136,7 +145,6 @@ def logic_editor(request, rule_id):
         service_logic.id,
     )
     return render(request, "policy_engine/logic_editor.html", context)
-
 
 
 @csrf_exempt

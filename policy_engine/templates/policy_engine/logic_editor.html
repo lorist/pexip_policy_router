@@ -42,7 +42,6 @@
 
       <h6 class="mt-3 mb-2">Conditions</h6>
 
-      <!-- Combiner selection -->
       <div class="d-flex align-items-center mb-2">
         <label class="me-2 fw-semibold">Match:</label>
         <select class="form-select form-select-sm w-auto combiner-select">
@@ -51,7 +50,6 @@
         </select>
       </div>
 
-      <!-- Condition rows container -->
       <div id="participant-conditions" class="condition-group border rounded p-2 bg-light">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <div>
@@ -68,43 +66,37 @@
         </div>
         <div class="conditions-list"></div>
       </div>
+
       <script id="participant_conditions_json" type="application/json">
         {{ participant_conditions_json|safe }}
       </script>
+
+      <input type="hidden" name="participant_conditions" value="">
+
       <!-- ========================================================= -->
-      <!-- PARTICIPANT RESPONSE BUILDER (scoped to participant tab) -->
+      <!-- PARTICIPANT RESPONSE BUILDER -->
       <!-- ========================================================= -->
       <h6 class="mt-4 mb-2">Participant Response Builder</h6>
       <p class="text-muted small">
         Define the fields that will be returned in the participant properties response.
         Leave blank to omit a field from the JSON response.
       </p>
-      
-      <div id="participant-response-builder" class="border rounded p-3 bg-white">
-        <!-- Fields dynamically injected by JS -->
-      </div>
-      
-      <!-- Hidden JSON response holder -->
-      <input type="hidden" name="participant_response_json" value="{{ participant_logic.response|default:'{}'|escapejs }}">
-      <input type="hidden" name="participant_conditions" value="">
+
+      <div id="participant-response-builder" class="border rounded p-3 bg-white"></div>
+
+      <!-- Hidden JSON field that gets POSTed -->
+      <input type="hidden" name="participant_response_json" id="participant_response_json"
+        value="{{ participant_logic.response|default:'{}'|escapejs }}">
+
+      <!-- Schema & existing data -->
       <script id="participant_response_schema_json" type="application/json">
         {{ participant_response_schema|safe }}
       </script>
-
-      <!-- Add condition button -->
-      <div class="text-end mb-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm add-condition" data-type="participant">
-          ➕ Add Condition
-        </button>
-      </div>
+      <script id="participant_response_json_data" type="application/json">
+        {{ participant_logic.response|default:'{}'|safe }}
+      </script>
 
       <hr>
-
-      <h6 class="mt-3 mb-2">Response</h6>
-      <div class="row g-2 mb-3">
-        <div class="col-md-4">{{ participant_form.response_action }}</div>
-        <div class="col-md-8">{{ participant_form.response_reason }}</div>
-      </div>
 
       <div class="text-end mt-4">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="participant">
@@ -117,29 +109,28 @@
     </form>
   </div>
 
-
   <!-- SERVICE LOGIC -->
   <div class="tab-pane fade {% if tab == 'service' %}show active{% endif %}" id="service">
     <form method="post" class="card shadow-sm mt-3 p-3">
       {% csrf_token %}
       <input type="hidden" name="logic_type" value="service">
-  
+
       <h5 class="mb-3">Service Logic</h5>
-  
+
       <div class="form-check form-switch mb-3">
         {{ service_form.enabled }}
         <label class="form-check-label" for="{{ service_form.enabled.id_for_label }}">
           Enabled
         </label>
       </div>
-  
+
       <div class="mb-3">
         {{ service_form.description.label_tag }}
         {{ service_form.description }}
       </div>
-  
+
       <h6 class="mt-3 mb-2">Conditions</h6>
-  
+
       <div class="d-flex align-items-center mb-2">
         <label class="me-2 fw-semibold">Match:</label>
         <select class="form-select form-select-sm w-auto combiner-select">
@@ -147,7 +138,7 @@
           <option value="any">Any (OR)</option>
         </select>
       </div>
-  
+
       <div id="service-conditions" class="condition-group border rounded p-2 bg-light">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <div>
@@ -164,13 +155,13 @@
         </div>
         <div class="conditions-list"></div>
       </div>
-  
+
       <script id="service_conditions_json" type="application/json">
         {{ service_conditions_json|safe }}
       </script>
-  
+
       <input type="hidden" name="service_conditions" value="">
-  
+
       <!-- ========================================================= -->
       <!-- SERVICE RESPONSE BUILDER -->
       <!-- ========================================================= -->
@@ -179,25 +170,34 @@
         Define the fields that will be returned in the service configuration response.
         Leave blank to omit a field from the JSON response.
       </p>
-  
+
       <div id="service-response-builder" class="border rounded p-3 bg-white"></div>
-      <input type="hidden" name="service_response_json" value="{{ service_logic.response|default:'{}'|escapejs }}">
+
+      <input type="hidden" name="service_response_json" id="service_response_json"
+        value="{{ service_logic.response|default:'{}'|escapejs }}">
+
       <script id="service_response_schema_json" type="application/json">
         {{ service_response_schema|safe }}
       </script>
-  
+      <script id="service_response_json_data" type="application/json">
+        {{ service_logic.response|default:'{}'|safe }}
+      </script>
+
+      <hr>
+
       <div class="text-end mt-4">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="service">
           🔍 Preview Logic
         </button>
         <button type="submit" class="btn btn-primary btn-sm">💾 Save Service</button>
       </div>
-  
+
       <div id="service-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></div>
     </form>
   </div>
 
 </div>
+
 <script id="participant_schema_json" type="application/json">
   {{ participant_schema }}
 </script>
