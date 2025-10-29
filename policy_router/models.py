@@ -144,6 +144,8 @@ class PolicyRequestLog(models.Model):
     source_host = models.CharField(max_length=255, blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    matched_logic = models.BooleanField(default=False)
+    logic_response = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"[{self.created_at}] {self.request_method} {self.request_path}"

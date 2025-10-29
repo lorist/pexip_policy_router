@@ -93,33 +93,50 @@ def maybe_basic_auth_protected(view_func):
 
     return _wrapped
 
-def _log_request(rule, request, response=None, is_override=False, override_response=None):
-    """Log inbound policy requests to DB"""
+def _log_request(
+    rule,
+    request,
+    response=None,
+    is_override=False,
+    override_response=None,
+    matched_logic=False,
+    logic_response=None,
+):
+    """Record policy request and result in DB."""
     from .models import PolicyRequestLog
 
     client_ip = _get_client_ip(request)
     host = request.META.get("HTTP_HOST", "")
     source_host = client_ip or host or None
 
-    # Capture request params for GET requests
     req_params = request.GET.dict() if request.method == "GET" else {}
-    if is_override:
-        resp_content = override_response 
+
+    # Determine final response body
+    if matched_logic:
+        resp_content = logic_response
+        resp_status = 200
+    elif is_override:
+        resp_content = override_response
+        resp_status = 200
     elif response is not None:
+        resp_status = getattr(response, "status_code", 200)
         try:
             resp_content = response.json()
         except Exception:
-            resp_content = {"raw": getattr(response, "text", "")} 
+            resp_content = {"raw": getattr(response, "text", "")}
     else:
         resp_content = None
+        resp_status = 200
 
     return PolicyRequestLog.objects.create(
         rule=rule,
         request_path=request.path,
         request_method=request.method,
         request_params=req_params,
+        response_status=resp_status,
         response_body=resp_content,
-        response_status=getattr(response, "status_code", 200),
+        matched_logic=matched_logic,
+        logic_response=logic_response,
         is_override=is_override,
         source_host=source_host,
     )
@@ -419,107 +436,102 @@ def proxy_service_policy(request):
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
     client_ip = _get_client_ip(request)
-    logger.debug(f"client_ip is: {client_ip}")
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
-    logger.debug(f"HTTP host is: {client_host}")
     
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            # Match alias first
+            # Basic matching (unchanged)
             if not re.search(rule.regex, local_alias or ""):
                 continue
-
-            # Match protocol and call_direction
             if rule.protocols and req_protocol and req_protocol not in rule.protocols:
                 continue
             if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                 continue
-
-            # Match source IP/host (NEW: safely skip instead of blocking)
             if rule.source_match:
                 src = rule.source_match.strip().lower()
-                if not (
-                    client_ip == src
-                    or client_host == src
-                    or (src in (client_ip or ""))
-                    or (src in (client_host or ""))
-                ):
-                    continue  # Only skip, do NOT break/return
+                if not (client_ip == src or client_host == src or src in (client_ip or "") or src in (client_host or "")):
+                    continue
 
-            # --- Reached this point: full match ---
             _increment_rule_usage(rule)
+
             # ============================================================
-            # PARTICIPANT LOGIC ENGINE (matches what the UI preview does)
+            # ADVANCED LOGIC EVALUATION FOR SERVICE REQUESTS
             # ============================================================
+
+            call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+
+            # 1) Try Service Logic First
             try:
-                participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
-
-                # Convert request.GET to a regular dict (Lists → scalars if needed)
-                call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
-
-                match = evaluate_conditions(participant_logic.conditions, call_info)
+                service_logic = PolicyLogic.objects.get(rule=rule, rule_type="service", enabled=True)
+                match = evaluate_conditions(service_logic.conditions, call_info)
 
                 if match["matched"]:
-                    logger.info(f"✅ Participant logic matched for rule '{rule.name}'")
-
-                    response_json = participant_logic.response or {"action": "continue"}
+                    response_json = service_logic.response or {"action": "continue"}
+                    logger.info(f"✅ Service logic matched for rule '{rule.name}'")
                     _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-
-                    # ⬅️ this returns EXACTLY what the preview shows
                     return JsonResponse(response_json)
 
-                logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
+                logger.info(f"❌ Service logic did not match for rule '{rule.name}'")
+
             except PolicyLogic.DoesNotExist:
                 pass
 
-            # --- Override check ---
+
+            # 2) Try Participant Logic Second
+            try:
+                participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
+                match = evaluate_conditions(participant_logic.conditions, call_info)
+
+                if match["matched"]:
+                    response_json = participant_logic.response or {"action": "continue"}
+                    logger.info(f"✅ Participant logic matched (fallback) for rule '{rule.name}'")
+                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
+                    return JsonResponse(response_json)
+
+                logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
+
+            except PolicyLogic.DoesNotExist:
+                pass
+
+
+            # ============================================================
+            # Legacy override mode
+            # ============================================================
             if rule.always_continue_service:
-                response_json = rule.override_service_response or {
-                    "status": "success",
-                    "action": "continue",
-                }
-                logger.info(f"Rule is an override, returning: {response_json}")
+                response_json = rule.override_service_response or {"status": "success", "action": "continue"}
+                logger.info(f"Rule override return: {response_json}")
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
                 return JsonResponse(response_json)
 
-            # --- Upstream proxy ---
+            # ============================================================
+            # Upstream forward
+            # ============================================================
             if rule.service_target_url:
                 upstream = rule.service_target_url.rstrip("/")
-                logger.info(f"Sending to upstream URL: {upstream}")
+                resp = httpx.get(
+                    upstream + request.path,
+                    params=request.GET,
+                    headers=_build_safe_headers(request),
+                    auth=((rule.basic_auth_username, rule.basic_auth_password)
+                          if rule.basic_auth_username and rule.basic_auth_password else None),
+                    timeout=10.0,
+                )
+                _log_request(rule, request, resp)
+
                 try:
-                    resp = httpx.get(
-                        upstream + request.path,
-                        params=request.GET,
-                        headers=_build_safe_headers(request),
-                        auth=(
-                            (rule.basic_auth_username, rule.basic_auth_password)
-                            if rule.basic_auth_username and rule.basic_auth_password
-                            else None
-                        ),
-                        timeout=10.0,
-                    )
-                    _log_request(rule, request, resp)
-
-                    try:
-                        logger.info(f"Upstream returned status code {resp.status_code}")
-                        logger.debug(f"Response content: {resp.content}")
-                        return JsonResponse(resp.json(), status=resp.status_code)
-
-                    except ValueError:
-                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
-
-                except httpx.RequestError as e:
-                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+                    return JsonResponse(resp.json(), status=resp.status_code)
+                except ValueError:
+                    return JsonResponse({"raw": resp.text}, status=resp.status_code)
 
         except re.error as e:
             logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
 
-    # Only reached if no matching rule after full loop
     logger.warning("No matching rule, returning 404")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 
 @csrf_exempt
@@ -527,7 +539,6 @@ def proxy_service_policy(request):
 def proxy_participant_policy(request):
     """Proxy for /policy/v1/participant/properties (always GET)."""
     logger.info("Received a participant/properties request")
-    logger.debug(f"Incoming headers: {request.headers._store} ")
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
@@ -536,76 +547,76 @@ def proxy_participant_policy(request):
     req_protocol = request.GET.get("protocol")
     req_call_direction = request.GET.get("call_direction")
     client_ip = _get_client_ip(request)
-    logger.debug(f"client_ip is: {client_ip}")
-    client_host = request.get_host().split(":")[0] if "HTTP_HOST" in request.META else None
-    logger.debug(f"HTTP host is: {client_host}")
+    client_host = request.get_host().split(":")[0] if request.get_host() else None
     
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            # Match alias first
+            # Basic rule matching
             if not re.search(rule.regex, local_alias or ""):
                 continue
-
-            # Match protocol and call_direction
             if rule.protocols and req_protocol and req_protocol not in rule.protocols:
                 continue
             if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                 continue
-
-            # Match source IP/host (NEW)
             if rule.source_match:
                 src = rule.source_match.strip().lower()
-                if not (
-                    client_ip == src
-                    or client_host == src
-                    or (src in (client_ip or ""))
-                    or (src in (client_host or ""))
-                ):
-                    continue  # Skip gracefully
+                if not (client_ip == src or client_host == src or src in (client_ip or "") or src in (client_host or "")):
+                    continue
 
-            # --- Reached this point: full match ---
             _increment_rule_usage(rule)
 
-            # --- Override check ---
+            # ============================================================
+            # ✅ ADVANCED PARTICIPANT LOGIC
+            # ============================================================
+            call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+
+            try:
+                participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
+                match = evaluate_conditions(participant_logic.conditions, call_info)
+
+                if match["matched"]:
+                    response_json = participant_logic.response or {"action": "continue"}
+                    logger.info(f"✅ Participant logic matched for rule '{rule.name}'")
+                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
+                    return JsonResponse(response_json)
+
+                logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
+
+            except PolicyLogic.DoesNotExist:
+                pass
+
+            # ============================================================
+            # Legacy override mode
+            # ============================================================
             if rule.always_continue_participant:
-                response_json = rule.override_participant_response or {
-                    "status": "success",
-                    "action": "continue",
-                }
-                logger.info(f"Rule is an override, returning: {response_json}")
+                response_json = rule.override_participant_response or {"action": "continue"}
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
                 return JsonResponse(response_json)
 
-            # --- Upstream proxy ---
+            # ============================================================
+            # Upstream forward
+            # ============================================================
             if rule.participant_target_url:
                 upstream = rule.participant_target_url.rstrip("/")
-                logger.info(f"Sending to upstream URL: {upstream}")
+                resp = httpx.get(
+                    upstream + request.path,
+                    params=request.GET,
+                    headers=_build_safe_headers(request),
+                    auth=((rule.basic_auth_username, rule.basic_auth_password)
+                          if rule.basic_auth_username and rule.basic_auth_password else None),
+                    timeout=10.0,
+                )
+                _log_request(rule, request, resp)
+
                 try:
-                    resp = httpx.get(
-                        upstream + request.path,
-                        params=request.GET,
-                        headers=_build_safe_headers(request),
-                        auth=(
-                            (rule.basic_auth_username, rule.basic_auth_password)
-                            if rule.basic_auth_username and rule.basic_auth_password
-                            else None
-                        ),
-                        timeout=10.0,
-                    )
-                    _log_request(rule, request, resp)
+                    return JsonResponse(resp.json(), status=resp.status_code)
+                except ValueError:
+                    return JsonResponse({"raw": resp.text}, status=resp.status_code)
 
-                    try:
-                        logger.info(f"Upstream returned status code {resp.status_code}")
-                        logger.debug(f"Response content: {resp.content}")
-                        return JsonResponse(resp.json(), status=resp.status_code)
-
-                    except ValueError:
-                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
-
-                except httpx.RequestError as e:
-                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+            # Default continue
+            return JsonResponse({"action": "continue"})
 
         except re.error as e:
             logger.error(f"Regex error in rule {rule.name}: {e}")
@@ -613,6 +624,7 @@ def proxy_participant_policy(request):
 
     logger.warning("No matching rule, returning 404")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 
 # -----------------------------
