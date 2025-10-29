@@ -23,6 +23,7 @@ from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
 from policy_engine.models import PolicyLogic
+from policy_engine.utils import evaluate_conditions
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
@@ -449,6 +450,29 @@ def proxy_service_policy(request):
 
             # --- Reached this point: full match ---
             _increment_rule_usage(rule)
+            # ============================================================
+            # PARTICIPANT LOGIC ENGINE (matches what the UI preview does)
+            # ============================================================
+            try:
+                participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
+
+                # Convert request.GET to a regular dict (Lists → scalars if needed)
+                call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+
+                match = evaluate_conditions(participant_logic.conditions, call_info)
+
+                if match["matched"]:
+                    logger.info(f"✅ Participant logic matched for rule '{rule.name}'")
+
+                    response_json = participant_logic.response or {"action": "continue"}
+                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
+
+                    # ⬅️ this returns EXACTLY what the preview shows
+                    return JsonResponse(response_json)
+
+                logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
+            except PolicyLogic.DoesNotExist:
+                pass
 
             # --- Override check ---
             if rule.always_continue_service:

@@ -159,28 +159,29 @@
         <div class="form-text">Only active rules are evaluated.</div>
       </div>
       <div class="col-md-3">
+      
+        {% if form.instance.pk %}
+        <!-- ✅ Rule exists: enable advanced logic UI -->
         <div class="form-check form-switch">
-          <input
-            type="checkbox"
-            class="form-check-input"
-            id="advanced-logic-toggle"
-            {% comment %} initial state can be anything; we'll hydrate from server {% endcomment %}
-            data-url="{% url 'policy_router:toggle_advanced_logic' rule.id %}"
-            data-state-url="{% url 'policy_router:advanced_logic_state' rule.id %}"
-          >
+          <input type="checkbox" class="form-check-input" id="advanced-logic-toggle"
+            data-url="{% url 'policy_router:toggle_advanced_logic' form.instance.pk %}"
+            data-state-url="{% url 'policy_router:advanced_logic_state' form.instance.pk %}">
           <label for="advanced-logic-toggle" class="form-check-label">
             🧠 Advanced Logic
           </label>
         </div>
+      
         <div class="form-text">Enable or disable advanced logic rules.</div>
-
-        <div id="advanced-logic-status" class="small mt-2 text-muted">
-          <!-- will be filled by JS using the /advanced-logic-state/ endpoint -->
-          Loading…
+        <div id="advanced-logic-status" class="small mt-2 text-muted">Loading…</div>
+      
+        {% else %}
+        <!-- 🚫 Rule not created yet: show disabled hint -->
+        <div class="alert alert-secondary small mt-2">
+          Save this rule first to configure Advanced Logic.
         </div>
+        {% endif %}
+      
       </div>
-
-
     </div>
   </div>
   <!-- JSON Editor Modal -->
