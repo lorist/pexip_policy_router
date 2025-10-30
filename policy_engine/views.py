@@ -11,6 +11,7 @@ from .forms import PolicyLogicForm
 from .utils import evaluate_conditions
 from django.utils.safestring import mark_safe
 
+
 logger = logging.getLogger("policy_engine.views")
 
 # can probably get rid of this and the url when dev is finished

@@ -23,7 +23,7 @@ from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
 from policy_engine.models import PolicyLogic
-from policy_engine.utils import evaluate_conditions
+from policy_engine.utils import evaluate_conditions, apply_template, normalize_policy_response
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
@@ -111,35 +111,34 @@ def _log_request(
 
     req_params = request.GET.dict() if request.method == "GET" else {}
 
-    # Determine final response body
-    if matched_logic:
-        resp_content = logic_response
+    # Decide final response payload + status
+    if matched_logic and logic_response is not None:
         resp_status = 200
-    elif is_override:
-        resp_content = override_response
+        resp_body = logic_response
+    elif is_override and override_response is not None:
         resp_status = 200
+        resp_body = override_response
     elif response is not None:
         resp_status = getattr(response, "status_code", 200)
         try:
-            resp_content = response.json()
+            resp_body = response.json()
         except Exception:
-            resp_content = {"raw": getattr(response, "text", "")}
+            resp_body = {"raw": getattr(response, "text", "")}
     else:
-        resp_content = None
         resp_status = 200
+        resp_body = None
 
     return PolicyRequestLog.objects.create(
         rule=rule,
-        request_path=request.path,
         request_method=request.method,
+        request_path=request.path,
         request_params=req_params,
         response_status=resp_status,
-        response_body=resp_content,
-        matched_logic=matched_logic,
-        logic_response=logic_response,
+        response_body=resp_body,
         is_override=is_override,
         source_host=source_host,
     )
+
 
 
 @maybe_protected
@@ -469,9 +468,11 @@ def proxy_service_policy(request):
 
                 if match["matched"]:
                     response_json = service_logic.response or {"action": "continue"}
+                    response_json = apply_template(response_json, call_info)
                     logger.info(f"✅ Service logic matched for rule '{rule.name}'")
                     _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    return JsonResponse(response_json)
+                    # return JsonResponse(response_json)
+                    return JsonResponse(normalize_policy_response(response_json))
 
                 logger.info(f"❌ Service logic did not match for rule '{rule.name}'")
 
@@ -486,9 +487,11 @@ def proxy_service_policy(request):
 
                 if match["matched"]:
                     response_json = participant_logic.response or {"action": "continue"}
+                    response_json = apply_template(response_json, call_info) 
                     logger.info(f"✅ Participant logic matched (fallback) for rule '{rule.name}'")
                     _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    return JsonResponse(response_json)
+                    # return JsonResponse(response_json)
+                    return JsonResponse(normalize_policy_response(response_json))
 
                 logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
 
@@ -503,7 +506,8 @@ def proxy_service_policy(request):
                 response_json = rule.override_service_response or {"status": "success", "action": "continue"}
                 logger.info(f"Rule override return: {response_json}")
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
-                return JsonResponse(response_json)
+                # return JsonResponse(response_json)
+                return JsonResponse(normalize_policy_response(response_json))
 
             # ============================================================
             # Upstream forward
@@ -580,7 +584,8 @@ def proxy_participant_policy(request):
                     response_json = participant_logic.response or {"action": "continue"}
                     logger.info(f"✅ Participant logic matched for rule '{rule.name}'")
                     _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    return JsonResponse(response_json)
+                    # return JsonResponse(response_json)
+                    return JsonResponse(normalize_policy_response(response_json))
 
                 logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
 
@@ -593,7 +598,8 @@ def proxy_participant_policy(request):
             if rule.always_continue_participant:
                 response_json = rule.override_participant_response or {"action": "continue"}
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
-                return JsonResponse(response_json)
+                # return JsonResponse(response_json)
+                return JsonResponse(normalize_policy_response(response_json))
 
             # ============================================================
             # Upstream forward

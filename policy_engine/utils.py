@@ -4,6 +4,9 @@ from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger("policy_engine.utils")
 
+# regex for incoming call_info so we can use values in responses
+_variable_re = re.compile(r"{{\s*([a-zA-Z0-9_]+)\s*}}")
+
 def evaluate_single_condition(field_value: Any, operator: str, expected_value: str) -> bool:
     """Evaluate a single atomic condition."""
     try:
@@ -103,3 +106,36 @@ def evaluate_conditions(conditions: Dict, call_info: Dict[str, Any]) -> Dict:
     except Exception as e:
         logger.exception(f"Error evaluating conditions: {e}")
         return {"matched": False, "failed_conditions": [str(e)]}
+
+def apply_template(data, context):
+    """
+    Recursively replace {{key}} placeholders in dict/string values using context.
+    """
+    if isinstance(data, dict):
+        return {k: apply_template(v, context) for k, v in data.items()}
+    if isinstance(data, list):
+        return [apply_template(i, context) for i in data]
+    if isinstance(data, str):
+        for key, val in context.items():
+            data = data.replace(f"{{{{ {key} }}}}", str(val))
+            data = data.replace(f"{{{{{key}}}}}", str(val))
+        return data
+    return data
+
+def normalize_policy_response(data):
+    """
+    Ensure the returned policy response matches Pexip expected structure.
+    """
+    if data is None:
+        return {"status": "success", "action": "continue"}
+
+    # If already normalized, leave it alone
+    if isinstance(data, dict) and data.get("status") and data.get("action"):
+        return data
+
+    # Otherwise wrap as result
+    return {
+        "status": "success",
+        "action": "continue",
+        "result": data
+    }
