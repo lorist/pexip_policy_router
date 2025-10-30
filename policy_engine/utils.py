@@ -107,20 +107,38 @@ def evaluate_conditions(conditions: Dict, call_info: Dict[str, Any]) -> Dict:
         logger.exception(f"Error evaluating conditions: {e}")
         return {"matched": False, "failed_conditions": [str(e)]}
 
+
+from jinja2 import Environment, StrictUndefined
+
+jinja_env = Environment(
+    autoescape=False,
+    undefined=StrictUndefined,  # Throw error if missing variable → safer debugging
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+
 def apply_template(data, context):
     """
-    Recursively replace {{key}} placeholders in dict/string values using context.
+    Recursively apply Jinja2 rendering to all strings in a dict/list.
+    Allows expressions like {{ var|upper }} and {% if %} blocks.
     """
     if isinstance(data, dict):
         return {k: apply_template(v, context) for k, v in data.items()}
+
     if isinstance(data, list):
-        return [apply_template(i, context) for i in data]
+        return [apply_template(v, context) for v in data]
+
     if isinstance(data, str):
-        for key, val in context.items():
-            data = data.replace(f"{{{{ {key} }}}}", str(val))
-            data = data.replace(f"{{{{{key}}}}}", str(val))
-        return data
+        try:
+            template = jinja_env.from_string(data)
+            return template.render(**context)
+        except Exception:
+            # If template parsing fails, return raw string for safety
+            return data
+
     return data
+
+
 
 def normalize_policy_response(data):
     """

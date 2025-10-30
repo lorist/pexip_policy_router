@@ -2,6 +2,8 @@
 from django.contrib import admin
 from django.urls import path, include
 
+app_name = "policy_engine"
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include(("policy_router.urls", "policy_router"), namespace="policy_router")),

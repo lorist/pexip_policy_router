@@ -8,7 +8,7 @@ from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PART
 from policy_router.models import PolicyProxyRule, PolicyRequestLog
 from .models import PolicyLogic
 from .forms import PolicyLogicForm
-from .utils import evaluate_conditions
+from .utils import evaluate_conditions, apply_template, normalize_policy_response
 from django.utils.safestring import mark_safe
 
 
@@ -182,30 +182,45 @@ def logic_editor(request, rule_id):
 
 @csrf_exempt
 @require_POST
-def preview_logic(request, rule_id):
+def preview_response(request, rule_id):
     """
-    Returns the response that WOULD be returned for a given call_info
-    without saving or affecting the rule.
+    Preview what the logic response *would* produce for a given call_info.
+    Does NOT modify rules or affect live policy decisions.
     """
-    data = json.loads(request.body or "{}")
+    try:
+        data = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     logic_type = data.get("type")  # "participant" or "service"
     conditions = data.get("conditions") or {}
-    response = data.get("response") or {}
+    response_template = data.get("response") or {}
     call_info = data.get("call_info") or {}
 
+    # Step 1 — Evaluate conditions
     match_result = evaluate_conditions(conditions, call_info)
 
     if match_result["matched"]:
-        result = response
+        # Step 2 — Apply Jinja2 templating
+        rendered = apply_template(response_template, call_info)
     else:
-        result = {
+        rendered = {
             "action": "continue",
             "reason": "conditions_not_matched",
             "failed": match_result["failed_conditions"],
         }
 
-    return JsonResponse({"result": result}, status=200)
+    # Step 3 — Ensure valid Pexip response structure
+    rendered = normalize_policy_response(rendered)
+
+    return JsonResponse(
+        {
+            "matched": match_result["matched"],
+            "rendered_response": rendered,
+        },
+        status=200
+    )
+
 
 @require_POST
 @csrf_exempt
@@ -226,7 +241,7 @@ def logic_preview(request, rule_id):
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
 
     try:
-        logic = rule.advanced_logics.get(rule_type=logic_type)
+        logic = rule.advanced_logic.get(rule_type=logic_type)
     except PolicyLogic.DoesNotExist:
         logic = None
 
