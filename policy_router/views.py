@@ -32,6 +32,15 @@ from django.db import transaction
 # Setup console logging
 logger = logging.getLogger(__name__)
 
+def finalize_response(response_json, call_info, status=200):
+    """
+    Apply Jinja templating + policy response normalization,
+    and return a proper JsonResponse.
+    """
+    response_json = apply_template(response_json, call_info)
+    response_json = normalize_policy_response(response_json)
+    return JsonResponse(response_json, status=status)
+
 def _increment_rule_usage(rule: PolicyProxyRule):
     """Increment usage metrics for a rule."""
     rule.match_count = (rule.match_count or 0) + 1
@@ -93,51 +102,74 @@ def maybe_basic_auth_protected(view_func):
 
     return _wrapped
 
+# def _log_request(
+#     rule,
+#     request,
+#     response=None,
+#     is_override=False,
+#     override_response=None,
+#     matched_logic=False,
+#     logic_response=None,
+# ):
 def _log_request(
     rule,
     request,
-    response=None,
-    is_override=False,
-    override_response=None,
+    upstream_response=None,
     matched_logic=False,
     logic_response=None,
+    is_override=False,
+    override_response=None,
 ):
-    """Record policy request and result in DB."""
-    from .models import PolicyRequestLog
+    """
+    Single unified logging function — ensures we always store the *rendered* policy response.
+    """
+    try:
+        # Normalize call info for consistent templating
+        call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
 
-    client_ip = _get_client_ip(request)
-    host = request.META.get("HTTP_HOST", "")
-    source_host = client_ip or host or None
+        # Render logic response if provided
+        rendered_logic = None
+        if logic_response:
+            rendered_logic = apply_template(logic_response, call_info)
+            rendered_logic = normalize_policy_response(rendered_logic)
 
-    req_params = request.GET.dict() if request.method == "GET" else {}
+        # Render override response if applicable
+        rendered_override = None
+        if override_response:
+            rendered_override = apply_template(override_response, call_info)
+            rendered_override = normalize_policy_response(rendered_override)
 
-    # Decide final response payload + status
-    if matched_logic and logic_response is not None:
-        resp_status = 200
-        resp_body = logic_response
-    elif is_override and override_response is not None:
-        resp_status = 200
-        resp_body = override_response
-    elif response is not None:
-        resp_status = getattr(response, "status_code", 200)
-        try:
-            resp_body = response.json()
-        except Exception:
-            resp_body = {"raw": getattr(response, "text", "")}
-    else:
-        resp_status = 200
-        resp_body = None
+        # Determine what response to store
+        if matched_logic and rendered_logic is not None:
+            final_body = rendered_logic
+            final_status = 200
+        elif is_override and rendered_override is not None:
+            final_body = rendered_override
+            final_status = 200
+        elif upstream_response is not None:
+            final_status = upstream_response.status_code
+            try:
+                final_body = upstream_response.json()
+            except Exception:
+                final_body = {"raw": upstream_response.text}
+        else:
+            final_status = 200
+            final_body = None
 
-    return PolicyRequestLog.objects.create(
-        rule=rule,
-        request_method=request.method,
-        request_path=request.path,
-        request_params=req_params,
-        response_status=resp_status,
-        response_body=resp_body,
-        is_override=is_override,
-        source_host=source_host,
-    )
+        PolicyRequestLog.objects.create(
+            rule=rule,
+            request_method=request.method,
+            request_path=request.path,
+            request_params=dict(request.GET),
+            response_status=final_status,
+            response_body=final_body,
+            source_host=_get_client_ip(request) or request.get_host(),
+            matched_logic=matched_logic,
+            is_override=is_override,
+        )
+
+    except Exception:
+        logger.exception(f"Logging failed for rule {rule.id}: {rule.name}")
 
 
 
@@ -424,24 +456,22 @@ def rule_tester(request):
 @csrf_exempt
 @maybe_basic_auth_protected
 def proxy_service_policy(request):
-    """Proxy for /policy/v1/service/configuration (always GET)."""
     logger.info("Received a service/configuration request")
-    logger.debug(f"Incoming headers: {request.headers._store} ")    
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    local_alias = request.GET.get("local_alias")
-    req_protocol = request.GET.get("protocol")
-    req_call_direction = request.GET.get("call_direction")
+    call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+    local_alias = call_info.get("local_alias")
+    req_protocol = call_info.get("protocol")
+    req_call_direction = call_info.get("call_direction")
     client_ip = _get_client_ip(request)
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
-    
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            # Basic matching (unchanged)
             if not re.search(rule.regex, local_alias or ""):
                 continue
             if rule.protocols and req_protocol and req_protocol not in rule.protocols:
@@ -450,72 +480,43 @@ def proxy_service_policy(request):
                 continue
             if rule.source_match:
                 src = rule.source_match.strip().lower()
-                if not (client_ip == src or client_host == src or src in (client_ip or "") or src in (client_host or "")):
+                if client_ip != src and client_host != src and src not in (client_ip or "") and src not in (client_host or ""):
                     continue
 
             _increment_rule_usage(rule)
 
-            # ============================================================
-            # ADVANCED LOGIC EVALUATION FOR SERVICE REQUESTS
-            # ============================================================
-
-            call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
-
-            # 1) Try Service Logic First
+            # === Service logic ===
             try:
                 service_logic = PolicyLogic.objects.get(rule=rule, rule_type="service", enabled=True)
                 match = evaluate_conditions(service_logic.conditions, call_info)
-
                 if match["matched"]:
                     response_json = service_logic.response or {"action": "continue"}
-                    response_json = apply_template(response_json, call_info)
-                    logger.info(f"✅ Service logic matched for rule '{rule.name}'")
-                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    # return JsonResponse(response_json)
-                    return JsonResponse(normalize_policy_response(response_json))
-
-                logger.info(f"❌ Service logic did not match for rule '{rule.name}'")
-
+                    _log_request(rule, request, matched_logic=True, logic_response=response_json)
+                    return finalize_response(response_json, call_info)
             except PolicyLogic.DoesNotExist:
                 pass
 
-
-            # 2) Try Participant Logic Second
+            # === Participant logic fallback ===
             try:
                 participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
                 match = evaluate_conditions(participant_logic.conditions, call_info)
-
                 if match["matched"]:
                     response_json = participant_logic.response or {"action": "continue"}
-                    response_json = apply_template(response_json, call_info) 
-                    logger.info(f"✅ Participant logic matched (fallback) for rule '{rule.name}'")
                     _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    # return JsonResponse(response_json)
-                    return JsonResponse(normalize_policy_response(response_json))
-
-                logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
-
+                    return finalize_response(response_json, call_info)
             except PolicyLogic.DoesNotExist:
                 pass
 
-
-            # ============================================================
-            # Legacy override mode
-            # ============================================================
+            # === Override ===
             if rule.always_continue_service:
-                response_json = rule.override_service_response or {"status": "success", "action": "continue"}
-                logger.info(f"Rule override return: {response_json}")
+                response_json = rule.override_service_response or {"action": "continue"}
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
-                # return JsonResponse(response_json)
-                return JsonResponse(normalize_policy_response(response_json))
+                return finalize_response(response_json, call_info)
 
-            # ============================================================
-            # Upstream forward
-            # ============================================================
+            # === Upstream ===
             if rule.service_target_url:
-                upstream = rule.service_target_url.rstrip("/")
                 resp = httpx.get(
-                    upstream + request.path,
+                    rule.service_target_url.rstrip("/") + request.path,
                     params=request.GET,
                     headers=_build_safe_headers(request),
                     auth=((rule.basic_auth_username, rule.basic_auth_password)
@@ -523,9 +524,8 @@ def proxy_service_policy(request):
                     timeout=10.0,
                 )
                 _log_request(rule, request, resp)
-
                 try:
-                    return JsonResponse(resp.json(), status=resp.status_code)
+                    return finalize_response(resp.json(), call_info, status=resp.status_code)
                 except ValueError:
                     return JsonResponse({"raw": resp.text}, status=resp.status_code)
 
@@ -533,31 +533,31 @@ def proxy_service_policy(request):
             logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
 
-    logger.warning("No matching rule, returning 404")
+    logger.warning("No matching service policy rule")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 
 
 @csrf_exempt
 @maybe_basic_auth_protected
 def proxy_participant_policy(request):
-    """Proxy for /policy/v1/participant/properties (always GET)."""
     logger.info("Received a participant/properties request")
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    local_alias = request.GET.get("local_alias")
-    req_protocol = request.GET.get("protocol")
-    req_call_direction = request.GET.get("call_direction")
+    call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+    local_alias = call_info.get("local_alias")
+    req_protocol = call_info.get("protocol")
+    req_call_direction = call_info.get("call_direction")
     client_ip = _get_client_ip(request)
     client_host = request.get_host().split(":")[0] if request.get_host() else None
-    
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            # Basic rule matching
             if not re.search(rule.regex, local_alias or ""):
                 continue
             if rule.protocols and req_protocol and req_protocol not in rule.protocols:
@@ -566,48 +566,32 @@ def proxy_participant_policy(request):
                 continue
             if rule.source_match:
                 src = rule.source_match.strip().lower()
-                if not (client_ip == src or client_host == src or src in (client_ip or "") or src in (client_host or "")):
+                if client_ip != src and client_host != src and src not in (client_ip or "") and src not in (client_host or ""):
                     continue
 
             _increment_rule_usage(rule)
 
-            # ============================================================
-            # ✅ ADVANCED PARTICIPANT LOGIC
-            # ============================================================
-            call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
-
+            # === Participant logic ===
             try:
                 participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
                 match = evaluate_conditions(participant_logic.conditions, call_info)
-
                 if match["matched"]:
                     response_json = participant_logic.response or {"action": "continue"}
-                    logger.info(f"✅ Participant logic matched for rule '{rule.name}'")
-                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    # return JsonResponse(response_json)
-                    return JsonResponse(normalize_policy_response(response_json))
-
-                logger.info(f"❌ Participant logic did not match for rule '{rule.name}'")
-
+                    _log_request(rule, request, is_override=True, override_response=response_json)
+                    return finalize_response(response_json, call_info)
             except PolicyLogic.DoesNotExist:
                 pass
 
-            # ============================================================
-            # Legacy override mode
-            # ============================================================
+            # === Override ===
             if rule.always_continue_participant:
                 response_json = rule.override_participant_response or {"action": "continue"}
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
-                # return JsonResponse(response_json)
-                return JsonResponse(normalize_policy_response(response_json))
+                return finalize_response(response_json, call_info)
 
-            # ============================================================
-            # Upstream forward
-            # ============================================================
+            # === Upstream ===
             if rule.participant_target_url:
-                upstream = rule.participant_target_url.rstrip("/")
                 resp = httpx.get(
-                    upstream + request.path,
+                    rule.participant_target_url.rstrip("/") + request.path,
                     params=request.GET,
                     headers=_build_safe_headers(request),
                     auth=((rule.basic_auth_username, rule.basic_auth_password)
@@ -615,21 +599,20 @@ def proxy_participant_policy(request):
                     timeout=10.0,
                 )
                 _log_request(rule, request, resp)
-
                 try:
-                    return JsonResponse(resp.json(), status=resp.status_code)
+                    return finalize_response(resp.json(), call_info, status=resp.status_code)
                 except ValueError:
                     return JsonResponse({"raw": resp.text}, status=resp.status_code)
 
-            # Default continue
-            return JsonResponse({"action": "continue"})
+            return finalize_response({"action": "continue"}, call_info)
 
         except re.error as e:
             logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
 
-    logger.warning("No matching rule, returning 404")
+    logger.warning("No matching participant policy rule")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
 
 
 

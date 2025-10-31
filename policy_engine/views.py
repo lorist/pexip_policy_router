@@ -140,13 +140,62 @@ def logic_editor(request, rule_id):
     participant_field_values = extract_enums(PARTICIPANT_CALL_INFO_SCHEMA)
     service_field_values = extract_enums(SERVICE_CALL_INFO_SCHEMA)
 
+    ##############################################
+    # Collect autosuggest values from call history
+    ##############################################
     for log in recent_logs:
-        p = log.request_params or {}
-        for field, value in p.items():
-            participant_field_values.setdefault(field, set()).add(value)
+        params = log.request_params or {}
+
+        for field, value in params.items():
+            bucket = participant_field_values.setdefault(field, set())
+
+            if isinstance(value, list):
+                for v in value:
+                    bucket.add(str(v))
+            else:
+                bucket.add(str(value))
+
+    for log in recent_logs:
+        params = log.request_params or {}
+
+        for field, value in params.items():
+            bucket = service_field_values.setdefault(field, set())
+
+            if isinstance(value, list):
+                for v in value:
+                    bucket.add(str(v))
+            else:
+                bucket.add(str(value))
+
 
     participant_field_values = {k: sorted(v) if isinstance(v, set) else v for k, v in participant_field_values.items()}
     service_field_values = {k: sorted(v) if isinstance(v, set) else v for k, v in service_field_values.items()}
+
+    # -----------------------
+    # Collect Available Call Info Variables (for UI variable panel + autocomplete)
+    # -----------------------
+    call_info_keys = set()
+
+    # Pull keys from recent logs
+    for log in recent_logs:
+        params = log.request_params or {}
+        for key in params.keys():
+            call_info_keys.add(key)
+
+    # Also include any fields referenced in stored logic responses (optional but helpful)
+    try:
+        call_info_keys.update(participant_logic.response.keys())
+    except Exception:
+        pass
+
+    try:
+        call_info_keys.update(service_logic.response.keys())
+    except Exception:
+        pass
+
+    # Sorted list for UI
+    available_call_info_vars = sorted(call_info_keys)
+
 
     # -----------------------
     # Final Context
@@ -173,6 +222,7 @@ def logic_editor(request, rule_id):
         "recent_call_info_list": recent_call_info_list,
         "participant_field_values": mark_safe(json.dumps(participant_field_values)),
         "service_field_values": mark_safe(json.dumps(service_field_values)),
+        "available_call_info_vars": available_call_info_vars,
     }
 
     return render(request, "policy_engine/logic_editor.html", context)
@@ -226,65 +276,36 @@ def preview_response(request, rule_id):
 @csrf_exempt
 def logic_preview(request, rule_id):
     """
-    Evaluate logic for previewing conditions and response.
-    Returns the `response` if conditions match, else {}.
-    Does NOT modify the database.
+    Preview the result of applying conditions + templated response.
+    Does not persist changes.
     """
-    data = json.loads(request.body.decode("utf-8"))
+    data = json.loads(request.body or "{}")
 
     logic_type = data.get("type")
-    conditions = data.get("conditions", {})
-    response = data.get("response", {})
-    call_info = data.get("call_info", {}) or {}
+    conditions = data.get("conditions") or {}
+    response_template = data.get("response") or {}
+    call_info = data.get("call_info") or {}
 
-    # Resolve correct stored logic object (if needed in future)
-    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    # Evaluate conditions using the exact same logic engine used at runtime
+    match = evaluate_conditions(conditions, call_info)
 
-    try:
-        logic = rule.advanced_logic.get(rule_type=logic_type)
-    except PolicyLogic.DoesNotExist:
-        logic = None
-
-    # --- Simple evaluator ----------------------------------------------------
-    def evaluate(group):
-        combiner = group.get("combiner", "all")
-        rules = group.get("rules", [])
-
-        results = []
-        for r in rules:
-            # nested group case
-            if "rules" in r:
-                results.append(evaluate(r))
-                continue
-
-            field = r.get("field")
-            operator = r.get("operator")
-            value = r.get("value")
-
-            actual = call_info.get(field)
-
-            match = False
-            if operator == "equals":
-                match = actual == value
-            elif operator == "not_equals":
-                match = actual != value
-            elif operator == "contains" and isinstance(actual, str):
-                match = value in actual
-            elif operator == "starts_with" and isinstance(actual, str):
-                match = actual.startswith(value)
-            elif operator == "ends_with" and isinstance(actual, str):
-                match = actual.endswith(value)
-            elif operator == "in_list" and isinstance(actual, (list, tuple)):
-                match = value in actual
-
-            results.append(match)
-
-        return all(results) if combiner == "all" else any(results)
-
-    # --- Apply test logic ----------------------------------------------------
-    if evaluate(conditions):
-        result = response
+    if match["matched"]:
+        # Apply Jinja2 templating to response JSON
+        rendered = apply_template(response_template, call_info)
     else:
-        result = {}
+        rendered = {
+            "action": "continue",
+            "reason": "conditions_not_matched",
+            "failed": match["failed_conditions"],
+        }
 
-    return JsonResponse({"result": result})
+    # Ensure output is compatible with Pexip Infinity Policy spec
+    rendered = normalize_policy_response(rendered)
+
+    return JsonResponse(
+        {
+            "matched": match["matched"],
+            "rendered_response": rendered,
+        },
+        status=200
+    )
