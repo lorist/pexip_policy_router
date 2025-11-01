@@ -59,20 +59,16 @@ def logic_editor(request, rule_id):
         form = participant_form if logic_type == "participant" else service_form
 
         if form.is_valid():
-            # --- SAFE CONDITIONS LOADING ---
-            raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip()
-            if not raw_conditions:
-                raw_conditions = '{"combiner": "all", "rules": []}'
+            raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip() or '{"combiner": "all", "rules": []}'
             logic.conditions = json.loads(raw_conditions)
 
-            # --- SAFE RESPONSE LOADING ---
-            raw_response = request.POST.get(f"{logic_type}_response_json", "").strip()
-            if not raw_response:
-                raw_response = '{"action": "continue"}'
+            raw_response = request.POST.get(f"{logic_type}_response_json", "").strip() or '{"action": "continue"}'
             logic.response = json.loads(raw_response)
+
             logic.enabled = form.cleaned_data["enabled"]
             logic.description = form.cleaned_data["description"]
             logic.save()
+
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={logic_type}")
 
     # -----------------------
@@ -87,169 +83,140 @@ def logic_editor(request, rule_id):
     def extract_call_info(log):
         params = log.request_params or {}
 
-        # Extract idp attributes (any field starting with idp_attribute_)
+        # Flatten idp_attribute_* into idp_attributes dict
         idp_attrs = {
             k.replace("idp_attribute_", ""): v
             for k, v in params.items()
             if k.startswith("idp_attribute_") and v not in (None, "", [])
         }
 
-        result = {
-            **{k: v for k, v in params.items() if v not in (None, "", [])},
-            "idp_attributes": idp_attrs or None,
-            "source_host": log.source_host,
-            "call_direction": params.get("call_direction", log.call_direction),
-            "protocol": params.get("protocol", log.protocol),
-        }
+        result = {**params}
+        if idp_attrs:
+            result["idp_attributes"] = idp_attrs
 
-        # Label priority fallback chain
+        result["remote_display_name"] = (params.get("remote_display_name") or [""])[0]
+        result["remote_alias"] = (params.get("remote_alias") or [""])[0]
+        result["call_direction"] = (params.get("call_direction") or [""])[0] or log.call_direction
+        result["protocol"] = (params.get("protocol") or [""])[0] or log.protocol
+
         label = (
-            params.get("remote_display_name")
-            or idp_attrs.get("displayname")
-            or idp_attrs.get("mail")
-            or params.get("local_alias")
+            result.get("remote_display_name")
+            or result.get("idp_attributes", {}).get("displayname")
+            or result.get("idp_attributes", {}).get("mail")
+            or result.get("local_alias", [""])[0]
             or "(unknown)"
         )
 
         summary = f"{label} — {result.get('call_direction', '?')} — {result.get('protocol', '?')}"
 
-        return {
-            "label": summary,
-            "json": json.dumps(result, default=str, indent=2),
-        }
+        return {"label": summary, "json": json.dumps(result, default=str, indent=2)}
 
-
-
+    recent_call_info_list = [extract_call_info(log) for log in recent_logs]
 
     # -----------------------
-    # Field Value Autosuggest Sets
+    # Build Field Value Suggestions
     # -----------------------
-    def extract_enums(schema):
-        return {
-            field: details.get("enum", [])
-            for field, details in schema.items()
-            if isinstance(details, dict) and "enum" in details
-        }
-    
-    def to_field_list(schema):
-        fields = []
-        for name, props in schema.items():
-            fields.append({
-                "name": name,
-                "label": name.replace("_", " ").title(),
-                "type": props.get("type", "string"),
-            })
-        return {"fields": fields}
+    from collections import defaultdict
 
-    def normalize_schema(schema):
-        fields = []
-        for field, details in schema.items():
-            label = details.get("label", field.replace("_", " ").title())
-            enum = details.get("enum", [])
-            fields.append({
-                "name": field,
-                "label": label,
-                "type": details.get("type", "string"),
-                "choices": enum,
-            })
-        return {"fields": fields}
-
-    participant_field_values = extract_enums(PARTICIPANT_CALL_INFO_SCHEMA)
-    service_field_values = extract_enums(SERVICE_CALL_INFO_SCHEMA)
-
-    ##############################################
-    # Collect autosuggest values from call history
-    ##############################################
-    for log in recent_logs:
-        params = log.request_params or {}
-        body = log.response_body or {}
-
-        # Flatten top-level params
-        for field, value in params.items():
-            bucket = participant_field_values.setdefault(field, set())
-            if isinstance(value, list):
-                bucket.update(str(v) for v in value)
-            else:
-                bucket.add(str(value))
-
-        # Flatten idp_attributes if present
-        idp_attrs = {}
-        if isinstance(body, dict):
-            idp_attrs = body.get("idp_attributes") or {}
-
-        for subkey, subval in idp_attrs.items():
-            participant_field_values.setdefault(f"idp_attributes.{subkey}", set()).add(str(subval))
-
-
-    for log in recent_logs:
-        params = log.request_params or {}
-        body = log.response_body or {}
-
-        # Flatten top-level params
-        for field, value in params.items():
-            bucket = service_field_values.setdefault(field, set())
-            if isinstance(value, list):
-                bucket.update(str(v) for v in value)
-            else:
-                bucket.add(str(value))
-
-        # Flatten idp_attributes if present
-        idp_attrs = {}
-        if isinstance(body, dict):
-            idp_attrs = body.get("idp_attributes") or {}
-
-        for subkey, subval in idp_attrs.items():
-            service_field_values.setdefault(f"idp_attributes.{subkey}", set()).add(str(subval))
-
-
-    participant_field_values = {k: sorted(v) if isinstance(v, set) else v for k, v in participant_field_values.items()}
-    service_field_values = {k: sorted(v) if isinstance(v, set) else v for k, v in service_field_values.items()}
-
-    # -----------------------
-    # Collect Available Call Info Variables (for UI autocomplete + variable panel)
-    # -----------------------
-    call_info_keys = set()
-
-    for log in recent_logs:
-        params = log.request_params or {}
-        # Flatten identity attributes into dot notation for autocomplete use
+    def flatten_params(params):
         for k, v in params.items():
             if k.startswith("idp_attribute_"):
-                call_info_keys.add(f"idp_attributes.{k.replace('idp_attribute_', '')}")
+                yield f"idp_attributes.{k.replace('idp_attribute_', '')}", v
+            else:
+                yield k, v
+    def is_participant_request(params):
+        return any(
+            k in params
+            for k in ("participant_uuid", "participant_type", "preauthenticated_role")
+        )
+    
+    participant_field_values = defaultdict(set)
+    service_field_values = defaultdict(set)
 
-    # Also include keys that exist in saved logic responses (helps re-edit view)
-    if isinstance(participant_logic.response, dict):
-        call_info_keys.update(participant_logic.response.keys())
+    for log in recent_logs:
+        params = log.request_params or {}
+        for key, value in flatten_params(params):
+            values = value if isinstance(value, list) else [value]
+            cleaned = [str(x) for x in values if x not in ("", None)]
 
-    if isinstance(service_logic.response, dict):
-        call_info_keys.update(service_logic.response.keys())
+            # We can detect participant vs service request by presence of `service_type`
+            if is_participant_request(params):
+                participant_field_values[key].update(cleaned)
+            else:
+                service_field_values[key].update(cleaned)
 
-    available_call_info_vars = sorted(call_info_keys)
+    participant_field_values = {k: sorted(v) for k, v in participant_field_values.items()}
+    service_field_values = {k: sorted(v) for k, v in service_field_values.items()}
 
     # -----------------------
-    # Example values (to help UI show hints)
+    # Available Variable Lists
+    # -----------------------
+    def iter_keys(params):
+        for k in params.keys():
+            if k.startswith("idp_attribute_"):
+                yield f"idp_attributes.{k.replace('idp_attribute_', '')}"
+            else:
+                yield k
+
+    participant_available_vars = set()
+    service_available_vars = set()
+
+    for log in recent_logs:
+        params = log.request_params or {}
+        keys = set(iter_keys(params))
+
+        if is_participant_request(params):
+            participant_available_vars.update(keys)
+        else:
+            service_available_vars.update(keys)
+
+    # Also pull keys used in saved responses:
+    def collect_vars(data, target):
+        if isinstance(data, dict):
+            for k, v in data.items():
+                target.add(k)
+                collect_vars(v, target)
+        elif isinstance(data, list):
+            for item in data:
+                collect_vars(item, target)
+
+    collect_vars(participant_logic.response, participant_available_vars)
+    collect_vars(service_logic.response, service_available_vars)
+
+    participant_available_vars = sorted(participant_available_vars)
+    service_available_vars = sorted(service_available_vars)
+
+    # -----------------------
+    # Example Values
     # -----------------------
     example_values = {}
     for log in recent_logs:
         params = log.request_params or {}
         for key, value in params.items():
-            if not value:
-                continue
             if isinstance(value, list) and value:
                 value = value[0]
-            example_values.setdefault(key, set()).add(str(value))
+            if value:
+                example_values.setdefault(key, set()).add(str(value))
 
-    # Flatten sets
     example_values = {k: sorted(v) for k, v in example_values.items()}
 
-    # -----------------------
-    # Build UI List of Call Info
-    # -----------------------
-    recent_call_info_list = [extract_call_info(log) for log in recent_logs]
+    # def to_field_list(schema):
+    #     return {"fields": [
+    #         {"name": name, "label": name.replace("_", " ").title(), "type": props.get("type", "string")}
+    #         for name, props in schema.items()
+    #     ]}
 
-
-
-    recent_call_info_list = [extract_call_info(log) for log in recent_logs]
+    def to_field_list(schema):
+        return {
+            "fields": [
+                {
+                    "name": name,
+                    "label": details.get("label", name.replace("_", " ").title()),
+                    "type": details.get("type", "string")
+                }
+                for name, details in schema.items()
+            ]
+        }
 
     # -----------------------
     # Final Context
@@ -265,23 +232,25 @@ def logic_editor(request, rule_id):
         "participant_condition_schema": mark_safe(json.dumps(to_field_list(PARTICIPANT_CALL_INFO_SCHEMA))),
         "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA))),
 
+
         "participant_conditions_json": json.dumps(participant_logic.conditions),
         "service_conditions_json": json.dumps(service_logic.conditions),
 
         "participant_response_json": json.dumps(participant_logic.response),
         "service_response_json": json.dumps(service_logic.response),
+
         "participant_response_schema": mark_safe(json.dumps(PARTICIPANT_RESPONSE_SCHEMA)),
         "service_response_schema": mark_safe(json.dumps(SERVICE_RESPONSE_SCHEMA)),
 
         "recent_call_info_list": recent_call_info_list,
+
         "participant_field_values": mark_safe(json.dumps(participant_field_values)),
         "service_field_values": mark_safe(json.dumps(service_field_values)),
-        "available_call_info_vars": available_call_info_vars,
 
-        # ✅ NEW
+        "participant_available_vars": participant_available_vars,
+        "service_available_vars": service_available_vars,
         "call_info_example_values": example_values,
     }
-
 
     return render(request, "policy_engine/logic_editor.html", context)
 
@@ -333,10 +302,6 @@ def preview_response(request, rule_id):
 @require_POST
 @csrf_exempt
 def logic_preview(request, rule_id):
-    """
-    Preview the result of applying conditions + templated response.
-    Does not persist changes.
-    """
     data = json.loads(request.body or "{}")
 
     logic_type = data.get("type")
@@ -344,26 +309,32 @@ def logic_preview(request, rule_id):
     response_template = data.get("response") or {}
     call_info = data.get("call_info") or {}
 
-    # Evaluate conditions using the exact same logic engine used at runtime
+    # Evaluate conditions with detailed trace
     match = evaluate_conditions(conditions, call_info)
 
+    # ✅ Build per-condition explanation tree
+    from .utils import explain_condition
+    explanation = []
+
+    def walk(group, path="root"):
+        for idx, rule in enumerate(group.get("rules", [])):
+            if "rules" in rule:
+                walk(rule, f"{path}.{idx}")
+            else:
+                explanation.append(explain_condition(rule["field"], rule["operator"], rule["value"], call_info))
+
+    walk(conditions)
+
+    # Build rendered result
     if match["matched"]:
-        # Apply Jinja2 templating to response JSON
         rendered = apply_template(response_template, call_info)
     else:
-        rendered = {
-            "action": "continue",
-            "reason": "conditions_not_matched",
-            "failed": match["failed_conditions"],
-        }
+        rendered = {"action": "continue", "reason": "conditions_not_matched"}
 
-    # Ensure output is compatible with Pexip Infinity Policy spec
     rendered = normalize_policy_response(rendered)
 
-    return JsonResponse(
-        {
-            "matched": match["matched"],
-            "rendered_response": rendered,
-        },
-        status=200
-    )
+    return JsonResponse({
+        "matched": match["matched"],
+        "rendered_response": rendered,
+        "explanation": explanation,
+    }, status=200)

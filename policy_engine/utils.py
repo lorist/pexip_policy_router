@@ -23,10 +23,48 @@ def get_nested(data, dotted):
     return current
 
 
-def evaluate_single_condition(field_value: Any, operator: str, expected_value: str) -> bool:
-    """Evaluate a single atomic condition."""
+def evaluate_single_condition(field_value: Any, operator: str, expected_value: str, call_info=None) -> bool:
+    """
+    Evaluate a single condition, supporting Jinja templating and extended template operators.
+    """
+    # ---- Template-based comparison ----
+    if operator.startswith("template_"):
+        try:
+            # Render both sides via Jinja (allows full logic on expected_value)
+            left = apply_template(str(field_value), call_info or {})
+            right = apply_template(str(expected_value), call_info or {})
+        except Exception:
+            return False
+
+        # Normalize to strings
+        left = "" if left is None else str(left)
+        right = "" if right is None else str(right)
+
+        if operator == "template_equals":
+            return left == right
+
+        elif operator == "template_contains":
+            return right in left
+
+        elif operator == "template_starts_with":
+            return left.startswith(right)
+
+        elif operator == "template_regex_match":
+            try:
+                return bool(re.search(right, left))
+            except re.error:
+                return False
+
+        elif operator == "template_boolean":
+            # The rendered expression must equal literal "true" (case-insensitive)
+            return right.strip().lower() == "true"
+
+        else:
+            logger.warning(f"Unknown template operator: {operator}")
+            return False
+
+    # ---- Standard operators ----
     try:
-        # Normalize types for comparison
         if isinstance(field_value, str):
             fv = field_value.lower()
             ev = str(expected_value).lower()
@@ -34,17 +72,16 @@ def evaluate_single_condition(field_value: Any, operator: str, expected_value: s
             fv = field_value
             ev = expected_value
 
-        # String-based matching
         if operator == "equals":
             return fv == ev
         elif operator == "not_equals":
             return fv != ev
         elif operator == "contains":
-            return ev in fv if isinstance(fv, str) else False
+            return isinstance(fv, str) and ev in fv
         elif operator == "starts_with":
-            return fv.startswith(ev)
+            return isinstance(fv, str) and fv.startswith(ev)
         elif operator == "ends_with":
-            return fv.endswith(ev)
+            return isinstance(fv, str) and fv.endswith(ev)
         elif operator == "regex_match":
             return bool(re.search(ev, str(fv)))
         elif operator in (">", "greater_than"):
@@ -66,9 +103,12 @@ def evaluate_single_condition(field_value: Any, operator: str, expected_value: s
         else:
             logger.warning(f"Unknown operator: {operator}")
             return False
+
     except Exception as e:
         logger.exception(f"Error evaluating condition ({field_value}, {operator}, {expected_value}): {e}")
         return False
+
+
 
 
 def evaluate_conditions_group(group: Dict, call_info: Dict[str, Any], path="root") -> Tuple[bool, List[str]]:
@@ -95,7 +135,8 @@ def evaluate_conditions_group(group: Dict, call_info: Dict[str, Any], path="root
             # ✅ NEW: dotted lookup support
             actual = get_nested(call_info, field)
 
-            matched = evaluate_single_condition(actual, operator, expected)
+            matched = evaluate_single_condition(actual, operator, expected, call_info)
+
             results.append(matched)
             if not matched:
                 failed.append(f"{path}.{field}: expected {expected!r}, got {actual!r}")
@@ -126,6 +167,35 @@ def evaluate_conditions(conditions: Dict, call_info: Dict[str, Any]) -> Dict:
     except Exception as e:
         logger.exception(f"Error evaluating conditions: {e}")
         return {"matched": False, "failed_conditions": [str(e)]}
+
+def explain_condition(field, operator, expected, call_info):
+    """
+    Returns a dict describing how a condition was evaluated.
+    """
+    from jinja2 import Template
+
+    actual = get_nested(call_info, field)
+
+    expected_raw = expected
+    expected_rendered = expected
+
+    if operator.startswith("template_"):
+        try:
+            expected_rendered = Template(expected).render(**call_info)
+        except Exception:
+            pass
+
+    result = evaluate_single_condition(actual, operator, expected_raw, call_info)
+
+    return {
+        "field": field,
+        "operator": operator,
+        "expected_raw": expected_raw,
+        "expected_rendered": expected_rendered,
+        "actual": actual,
+        "result": result,
+    }
+
 
 
 from jinja2 import Environment, StrictUndefined

@@ -1,11 +1,10 @@
 {% extends "policy_router/base.html" %}
 {% load static %}
 {% block title %}Advanced Logic Editor – {{ rule.name }}{% endblock %}
-{% block content %}
 
+{% block content %}
 <h2 class="mb-4">🧠 Advanced Logic Builder for <strong>{{ rule.name }}</strong></h2>
 
-<!-- Tabs -->
 <ul class="nav nav-tabs">
   <li class="nav-item">
     <a class="nav-link {% if tab == 'participant' %}active{% endif %}" href="?tab=participant">👤 Participant Logic</a>
@@ -18,83 +17,81 @@
 <div class="tab-content mt-3">
   <input type="hidden" id="rule-id" value="{{ rule.id }}">
 
-  <!-- ===================== PARTICIPANT LOGIC ===================== -->
+  <!-- PARTICIPANT TAB -->
   <div class="tab-pane fade {% if tab == 'participant' %}show active{% endif %}" id="participant">
-    <form method="post" class="card shadow-sm mt-3 p-3">
+    <form method="post" class="card shadow-sm p-3">
       {% csrf_token %}
       <input type="hidden" name="logic_type" value="participant">
 
-      <h5 class="mb-3">Participant Logic</h5>
-
+      <h5>Participant Logic</h5>
       <div class="form-check form-switch mb-3">
-        {{ participant_form.enabled }}
-        <label class="form-check-label" for="{{ participant_form.enabled.id_for_label }}">Enabled</label>
+        {{ participant_form.enabled }} <label>Enabled</label>
       </div>
 
-      <div class="mb-3">
-        {{ participant_form.description.label_tag }}
-        {{ participant_form.description }}
+      {{ participant_form.description }}
+
+      <div class="alert alert-secondary p-3 small">
+        <strong>Template Expressions Supported</strong><br>
+        You can reference call_info fields using <code>{{ variable }}</code> syntax or full Jinja blocks:
+      
+        {% verbatim %}
+        <pre class="mb-2 bg-light p-2" style="font-size: 0.85em; line-height: 1.35;">
+      {{ remote_display_name }}
+      {{ idp_attributes.mail|lower }}
+      
+      {% if call_direction == "dial_in" %}
+        Caller is joining into the service
+      {% else %}
+        Caller is dialing out from the service
+      {% endif %}
+        </pre>
+        {% endverbatim %}
+      
+        <div class="mt-2">
+          <strong>Available Variables:</strong><br>
+          {% for v in participant_available_vars %}
+          <code>{{ v }}</code>{% if not forloop.last %}, {% endif %}
+          {% endfor %}
+        </div>
       </div>
 
-      <h6 class="mt-3 mb-2">Conditions</h6>
-      <div id="participant-conditions" class="condition-group border rounded p-2 bg-light"></div>
 
+      <div id="participant-var-chips" class="d-flex flex-wrap gap-1">
+        {% for key in participant_available_vars %}
+        <button type="button" class="btn btn-sm btn-outline-primary insert-var" data-var="{{ key }}"
+          title="{% if call_info_example_values.key %}Example: {{ call_info_example_values.key|join:', ' }}{% else %}No example captured yet{% endif %}">
+          {{ key }}
+        </button>
+        {% endfor %}
+      </div>>
+
+      <h6 class="mt-3 mb-1">Conditions</h6>
+      <div id="participant-conditions"></div>
       <script id="participant_conditions_json" type="application/json">{{ participant_conditions_json|safe }}</script>
       <input type="hidden" name="participant_conditions">
 
-      <h6 class="mt-4 mb-2">Participant Response</h6>
-      <div id="participant-response-builder" class="border rounded p-3 bg-white"></div>
-
-      <div class="mt-3">
-        <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse"
-          data-bs-target="#available-vars-participant">
-          🧩 Show Available Variables
-        </button>
-        <div class="collapse mt-2" id="available-vars-participant">
-          <div class="card card-body small">
-            <strong>Available Jinja Variables:</strong>
-            <p class="text-muted small mb-2">Click a chip to insert.</p>
-            <div class="d-flex flex-wrap gap-2 mt-2">
-              {% for var in available_call_info_vars %}
-              <button type="button" class="btn btn-outline-secondary btn-sm insert-var" data-var="{{ var }}"
-                data-bs-toggle="tooltip" data-bs-placement="top"
-                title="{% if call_info_example_values.var %}Examples: {{ call_info_example_values.var|join:', ' }}{% else %}No examples yet{% endif %}">
-                {{ var }}
-              </button>
-              {% empty %}
-              <em>No call_info captured yet — make some calls first.</em>
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-      </div>
-
+      <h6 class="mt-4 mb-1">Response</h6>
+      <div id="participant-response-builder"></div>
       <script id="participant_response_schema_json"
         type="application/json">{{ participant_response_schema|safe }}</script>
       <script id="participant_response_json_data" type="application/json">{{ participant_response_json|safe }}</script>
-      <input type="hidden" name="participant_response_json" id="participant_response_json"
-        value="{{ participant_response_json|safe }}">
+      <input type="hidden" name="participant_response_json">
 
-      <label class="form-label mt-4">Test Call Info JSON</label>
+      <label class="form-label mt-3 small">Test Call Info</label>
       <textarea id="participant-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
 
-      {% if recent_call_info_list %}
-      <div class="mb-3 mt-2">
-        <label class="form-label small text-muted">Recent Call Info</label>
-        <div class="input-group">
-          <select id="participant-call-info-history" class="form-select form-select-sm">
-            <option value="">Select...</option>
-            {% for item in recent_call_info_list %}
-            <option value='{{ item.json }}'>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="participant">📥
-            Load</button>
-        </div>
+      <div class="input-group mt-2">
+        <select id="participant-call-info-history" class="form-select form-select-sm">
+          <option value="">Select recent call…</option>
+          {% for item in recent_call_info_list %}
+          <option value='{{ item.json }}'>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="participant">📥
+          Load</button>
       </div>
-      {% endif %}
 
-      <div class="text-end mt-4">
+      <div class="mt-3 text-end">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="participant">🔍
           Preview</button>
         <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
@@ -104,77 +101,81 @@
     </form>
   </div>
 
-  <!-- ===================== SERVICE LOGIC ===================== -->
+  <!-- SERVICE TAB -->
   <div class="tab-pane fade {% if tab == 'service' %}show active{% endif %}" id="service">
-    <form method="post" class="card shadow-sm mt-3 p-3">
+    <form method="post" class="card shadow-sm p-3">
       {% csrf_token %}
       <input type="hidden" name="logic_type" value="service">
 
-      <h5 class="mb-3">Service Logic</h5>
+      <h5>Service Logic</h5>
       <div class="form-check form-switch mb-3">
-        {{ service_form.enabled }}
-        <label class="form-check-label" for="{{ service_form.enabled.id_for_label }}">Enabled</label>
+        {{ service_form.enabled }} <label>Enabled</label>
       </div>
 
-      <div class="mb-3">
-        {{ service_form.description.label_tag }}
-        {{ service_form.description }}
+      {{ service_form.description }}
+
+      <div class="alert alert-secondary p-3 small">
+        <strong>Template Expressions Supported</strong><br>
+        Service responses also support dynamic templating:
+      
+        {% verbatim %}
+        <pre class="mb-2 bg-light p-2" style="font-size: 0.85em; line-height: 1.35;">
+      {{ service_tag }}
+      {{ remote_display_name|title }}
+      {{ idp_attributes.department }}
+      
+      {% if location == "internal" %}
+        { "view": "one_main_nine_around" }
+      {% else %}
+        { "view": "one_main_zero_pips" }
+      {% endif %}
+        </pre>
+        {% endverbatim %}
+      
+        <div class="mt-2">
+          <strong>Available Variables:</strong><br>
+          {% for v in service_available_vars %}
+          <code>{{ v }}</code>{% if not forloop.last %}, {% endif %}
+          {% endfor %}
+        </div>
       </div>
 
-      <h6 class="mt-3 mb-2">Conditions</h6>
-      <div id="service-conditions" class="condition-group border rounded p-2 bg-light"></div>
+      <!-- Variable chips -->
+      <div id="service-var-chips" class="d-flex flex-wrap gap-1">
+        {% for key in service_available_vars %}
+        <button type="button" class="btn btn-sm btn-outline-primary insert-var" data-var="{{ key }}"
+          title="{% if call_info_example_values.key %}Example: {{ call_info_example_values.key|join:', ' }}{% endif %}">
+          {{ key }}
+        </button>
+        {% endfor %}
+      </div>
 
+      <h6 class="mt-3 mb-1">Conditions</h6>
+      <div id="service-conditions"></div>
       <script id="service_conditions_json" type="application/json">{{ service_conditions_json|safe }}</script>
       <input type="hidden" name="service_conditions">
 
-      <h6 class="mt-4 mb-2">Service Response</h6>
-      <div id="service-response-builder" class="border rounded p-3 bg-white"></div>
-
-      <div class="mt-3">
-        <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse"
-          data-bs-target="#available-vars-service">
-          🧩 Show Available Variables
-        </button>
-        <div class="collapse mt-2" id="available-vars-service">
-          <div class="card card-body small">
-            <strong>Available Variables:</strong>
-            <p class="text-muted small mb-2">Click to insert.</p>
-            <div class="d-flex flex-wrap gap-2 mt-2">
-              {% for var in available_call_info_vars %}
-              <button type="button" class="btn btn-outline-secondary btn-sm insert-var" data-var="{{ var }}">{{ var
-                }}</button>
-              {% empty %}<em>No call_info captured yet.</em>
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-      </div>
-
+      <h6 class="mt-4 mb-1">Response</h6>
+      <div id="service-response-builder"></div>
       <script id="service_response_schema_json" type="application/json">{{ service_response_schema|safe }}</script>
       <script id="service_response_json_data" type="application/json">{{ service_response_json|safe }}</script>
-      <input type="hidden" name="service_response_json" id="service_response_json"
-        value="{{ service_response_json|safe }}">
+      <input type="hidden" name="service_response_json">
 
-      <label class="form-label mt-4">Test Call Info JSON</label>
+      <label class="form-label mt-3 small">Test Call Info</label>
       <textarea id="service-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
 
-      {% if recent_call_info_list %}
-      <div class="mb-3 mt-2">
-        <label class="form-label small text-muted">Recent Call Info</label>
-        <div class="input-group">
-          <select id="service-call-info-history" class="form-select form-select-sm">
-            <option value="">Select...</option>
-            {% for item in recent_call_info_list %}
-            <option value='{{ item.json }}'>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="service">📥
-            Load</button>
-        </div>
+      <div class="input-group mt-2">
+        <select id="service-call-info-history" class="form-select form-select-sm">
+          <option value="">Select recent call…</option>
+          {% for item in recent_call_info_list %}
+          <option value='{{ item.json }}'>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="service">📥
+          Load</button>
       </div>
-      {% endif %}
 
-      <div class="text-end mt-4">
+      <div class="mt-3 text-end">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="service">🔍 Preview</button>
         <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
       </div>
@@ -183,24 +184,45 @@
     </form>
   </div>
 </div>
+<script id="participant_condition_schema_json" type="application/json">
+  {{ participant_condition_schema|safe }}
+</script>
 
-<script id="participant_condition_schema_json" type="application/json">{{ participant_condition_schema|safe }}</script>
-<script id="service_condition_schema_json" type="application/json">{{ service_condition_schema|safe }}</script>
+<script id="service_condition_schema_json" type="application/json">
+  {{ service_condition_schema|safe }}
+</script>
+
+<script id="participant_conditions_json" type="application/json">
+  {{ participant_conditions_json|safe }}
+</script>
+
+<script id="service_conditions_json" type="application/json">
+  {{ service_conditions_json|safe }}
+</script>
 
 <script>
+  window.PARTICIPANT_AVAILABLE_VARS = {{ participant_available_vars | safe }};
+  window.SERVICE_AVAILABLE_VARS = {{ service_available_vars | safe }};
   window.PARTICIPANT_FIELD_VALUES = {{ participant_field_values | safe }};
   window.SERVICE_FIELD_VALUES = {{ service_field_values | safe }};
-  window.availableCallInfoVars = {{ available_call_info_vars | safe }};
   window.call_info_example_values = {{ call_info_example_values | safe }};
 </script>
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el))
-  });
-</script>
+
 
 <script type="module" src="{% static 'policy_engine/js/logic_editor.js' %}"></script>
 <link rel="stylesheet" href="{% static 'policy_engine/css/logic_editor.css' %}">
+<script>
+  document.querySelectorAll(".alert code").forEach(el => {
+    el.addEventListener("mouseenter", () => {
+      const vars = window.call_info_example_values || {};
+      const name = el.textContent.trim();
+
+      if (vars[name] && vars[name].length) {
+        el.setAttribute("title", "Examples: " + vars[name].slice(0, 6).join(", "));
+      }
+    });
+  });
+</script>
+
 
 {% endblock %}
