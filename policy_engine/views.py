@@ -63,36 +63,42 @@ def logic_editor(request, rule_id):
         chosen_action = request.POST.get(action_field, "allow")  # default allow
 
         if form.is_valid():
-            # Store conditions
+            # Store conditions JSON
             raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip()
             logic.conditions = json.loads(raw_conditions or '{"combiner": "all", "rules": []}')
 
-            # Store enable + description fields
+            # Store enable + description
             logic.enabled = form.cleaned_data["enabled"]
             logic.description = form.cleaned_data["description"]
 
-            # Extract reject reason (always stored in DB field)
+            # Always store reject reason (used for UI state and reject messages)
             reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
-            logic.reject_reason = reject_reason  # always store this, blank or not
+            logic.reject_reason = reject_reason
 
-            # ✅ If REJECT is selected → full override response
+            # ✅ REJECT
             if chosen_action == "reject":
                 logic.response = {
                     "status": "success",
                     "action": "reject",
-                    "result": {"reject_reason": reject_reason or "Rejected"}
+                    "result": {"reject_reason": reject_reason or "Call rejected"}
                 }
 
-            # ✅ If ALLOW is selected → use builder JSON
+            # ✅ REDIRECT (SERVICE ONLY)
+            elif chosen_action == "redirect":
+                new_alias = request.POST.get("service_new_alias", "").strip()
+                logic.response = {
+                    "status": "success",
+                    "action": "redirect",
+                    "result": {"new_alias": new_alias}
+                }
+
+            # ✅ ALLOW → use JSON from the response builder
             else:
                 raw_response = request.POST.get(f"{logic_type}_response_json", "").strip()
                 logic.response = json.loads(raw_response or "{}")
 
             logic.save()
-
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={logic_type}")
-
-
 
     # -----------------------
     # Recent Call Info History
@@ -240,6 +246,13 @@ def logic_editor(request, rule_id):
                 for name, details in schema.items()
             ]
         }
+    def current_service_mode(logic):
+        action = logic.response.get("action")
+        if action == "reject":
+            return "reject"
+        if action == "redirect":
+            return "redirect"
+        return "allow"  # default
 
     # -----------------------
     # Final Context
@@ -251,7 +264,7 @@ def logic_editor(request, rule_id):
         "service_form": service_form,
         "participant_logic": participant_logic,
         "service_logic": service_logic,
-
+        "service_mode": current_service_mode(service_logic),
         "participant_condition_schema": mark_safe(json.dumps(to_field_list(PARTICIPANT_CALL_INFO_SCHEMA))),
         "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA))),
 

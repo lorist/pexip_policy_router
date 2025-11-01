@@ -32,6 +32,11 @@ class PolicyLogicForm(forms.ModelForm):
             "placeholder": "e.g. Not allowed"
         })
     )
+    service_new_alias = forms.CharField(
+        required=False,
+        label="Redirect to Alias",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "sip:someone@example.com"})
+    )
 
     class Meta:
         model = PolicyLogic
