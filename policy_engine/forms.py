@@ -20,29 +20,51 @@ class JSONHiddenField(forms.CharField):
 
 
 class PolicyLogicForm(forms.ModelForm):
-    conditions = JSONHiddenField(required=False)
-    response_action = forms.ChoiceField(
+    # JSON for conditions (hidden)
+    conditions = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    # Only shown when Action = Reject
+    reject_reason = forms.CharField(
         required=False,
-        choices=[("continue", "Continue"), ("reject", "Reject"), ("override", "Override")],
-        widget=forms.Select(attrs={"class": "form-select"}),
-    )
-    response_reason = forms.CharField(
-        required=False,
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-        help_text="Optional reason or metadata.",
+        label="Reject Reason (displayed to caller)",
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "e.g. Not allowed"
+        })
     )
 
     class Meta:
         model = PolicyLogic
-        fields = ["enabled", "description", "conditions"]
+        fields = [
+            "enabled",
+            "description",
+            "conditions",
+            "reject_reason",
+        ]
+        widgets = {
+            "description": forms.Textarea(attrs={
+                "rows": 2,
+                "class": "form-control form-control-sm",
+                "placeholder": "Optional description of this logic block"
+            }),
+        }
 
     def save(self, commit=True):
+        """
+        The view handles response building based on allow/reject mode.
+        Here we ONLY store enabled, description, conditions, reject_reason.
+        """
         obj = super().save(commit=False)
-        obj.conditions = self.cleaned_data["conditions"] or {"combiner": "all", "rules": []}
-        obj.response = {
-            "action": self.cleaned_data.get("response_action"),
-            "reason": self.cleaned_data.get("response_reason"),
+
+        # Ensure empty or missing conditions default cleanly
+        obj.conditions = self.cleaned_data.get("conditions") or {
+            "combiner": "all",
+            "rules": []
         }
+
+        # DO NOT touch obj.response here — handled in logic_editor view
         if commit:
             obj.save()
+
         return obj
+

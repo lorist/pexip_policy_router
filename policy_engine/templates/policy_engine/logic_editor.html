@@ -24,59 +24,49 @@
       <input type="hidden" name="logic_type" value="participant">
 
       <h5>Participant Logic</h5>
+
       <div class="form-check form-switch mb-3">
         {{ participant_form.enabled }} <label>Enabled</label>
       </div>
 
       {{ participant_form.description }}
 
-      <div class="alert alert-secondary p-3 small">
-        <strong>Template Expressions Supported</strong><br>
-        You can reference call_info fields using <code>{{ variable }}</code> syntax or full Jinja blocks:
-      
-        {% verbatim %}
-        <pre class="mb-2 bg-light p-2" style="font-size: 0.85em; line-height: 1.35;">
-      {{ remote_display_name }}
-      {{ idp_attributes.mail|lower }}
-      
-      {% if call_direction == "dial_in" %}
-        Caller is joining into the service
-      {% else %}
-        Caller is dialing out from the service
-      {% endif %}
-        </pre>
-        {% endverbatim %}
-      
-        <div class="mt-2">
-          <strong>Available Variables:</strong><br>
-          {% for v in participant_available_vars %}
-          <code>{{ v }}</code>{% if not forloop.last %}, {% endif %}
-          {% endfor %}
-        </div>
+      <!-- ACTION MODE SELECT -->
+      <div class="mt-3">
+        <label class="form-label fw-semibold">Action</label>
+        <select name="participant_action" class="form-select form-select-sm action-selector" data-type="participant">
+          <option value="allow" {% if not participant_logic.reject_reason %}selected{% endif %}>✅ Allow (Continue call)
+          </option>
+          <option value="reject" {% if participant_logic.reject_reason %}selected{% endif %}>⛔ Reject (Deny call)
+          </option>
+        </select>
       </div>
 
+      <!-- Reject Reason -->
+      <div class="mt-3 reject-block participant-reject-block" {% if not participant_logic.reject_reason %}style="display:none;" {% endif %}>
+        <label class="form-label small text-danger fw-bold">Reject Reason (shown to user)</label>
+        {{ participant_form.reject_reason }}
+      </div>
 
-      <div id="participant-var-chips" class="d-flex flex-wrap gap-1">
-        {% for key in participant_available_vars %}
-        <button type="button" class="btn btn-sm btn-outline-primary insert-var" data-var="{{ key }}"
-          title="{% if call_info_example_values.key %}Example: {{ call_info_example_values.key|join:', ' }}{% else %}No example captured yet{% endif %}">
-          {{ key }}
-        </button>
-        {% endfor %}
-      </div>>
-
-      <h6 class="mt-3 mb-1">Conditions</h6>
+      <!-- Conditions -->
+      <h6 class="mt-4 mb-1">Conditions</h6>
       <div id="participant-conditions"></div>
       <script id="participant_conditions_json" type="application/json">{{ participant_conditions_json|safe }}</script>
       <input type="hidden" name="participant_conditions">
 
-      <h6 class="mt-4 mb-1">Response</h6>
-      <div id="participant-response-builder"></div>
-      <script id="participant_response_schema_json"
-        type="application/json">{{ participant_response_schema|safe }}</script>
-      <script id="participant_response_json_data" type="application/json">{{ participant_response_json|safe }}</script>
-      <input type="hidden" name="participant_response_json">
+      <!-- Response Builder (hide when reject) -->
+      <div class="participant-response-block" {% if participant_logic.reject_reason %}style="display:none;" {% endif %}>
 
+        <h6 class="mt-4 mb-1">Response</h6>
+        <div id="participant-response-builder"></div>
+        <script id="participant_response_schema_json"
+          type="application/json">{{ participant_response_schema|safe }}</script>
+        <script id="participant_response_json_data"
+          type="application/json">{{ participant_response_json|safe }}</script>
+        <input type="hidden" name="participant_response_json">
+      </div>
+
+      <!-- Test Call Info -->
       <label class="form-label mt-3 small">Test Call Info</label>
       <textarea id="participant-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
 
@@ -98,8 +88,16 @@
       </div>
 
       <pre id="participant-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></pre>
+
+      <!-- Variable Chips -->
+      <div id="participant-var-chips" class="d-flex flex-wrap gap-1 mt-3">
+        {% for key in participant_available_vars %}
+        <button type="button" class="btn btn-sm btn-outline-primary insert-var" data-var="{{ key }}">{{ key }}</button>
+        {% endfor %}
+      </div>
     </form>
   </div>
+
 
   <!-- SERVICE TAB -->
   <div class="tab-pane fade {% if tab == 'service' %}show active{% endif %}" id="service">
@@ -108,58 +106,41 @@
       <input type="hidden" name="logic_type" value="service">
 
       <h5>Service Logic</h5>
+
       <div class="form-check form-switch mb-3">
         {{ service_form.enabled }} <label>Enabled</label>
       </div>
 
       {{ service_form.description }}
 
-      <div class="alert alert-secondary p-3 small">
-        <strong>Template Expressions Supported</strong><br>
-        Service responses also support dynamic templating:
-      
-        {% verbatim %}
-        <pre class="mb-2 bg-light p-2" style="font-size: 0.85em; line-height: 1.35;">
-      {{ service_tag }}
-      {{ remote_display_name|title }}
-      {{ idp_attributes.department }}
-      
-      {% if location == "internal" %}
-        { "view": "one_main_nine_around" }
-      {% else %}
-        { "view": "one_main_zero_pips" }
-      {% endif %}
-        </pre>
-        {% endverbatim %}
-      
-        <div class="mt-2">
-          <strong>Available Variables:</strong><br>
-          {% for v in service_available_vars %}
-          <code>{{ v }}</code>{% if not forloop.last %}, {% endif %}
-          {% endfor %}
-        </div>
+      <div class="mt-3">
+        <label class="form-label fw-semibold">Action</label>
+        <select name="service_action" class="form-select form-select-sm action-selector" data-type="service">
+          <option value="allow" {% if not service_logic.reject_reason %}selected{% endif %}>✅ Allow (Continue call)
+          </option>
+          <option value="reject" {% if service_logic.reject_reason %}selected{% endif %}>⛔ Reject (Deny call)</option>
+        </select>
       </div>
 
-      <!-- Variable chips -->
-      <div id="service-var-chips" class="d-flex flex-wrap gap-1">
-        {% for key in service_available_vars %}
-        <button type="button" class="btn btn-sm btn-outline-primary insert-var" data-var="{{ key }}"
-          title="{% if call_info_example_values.key %}Example: {{ call_info_example_values.key|join:', ' }}{% endif %}">
-          {{ key }}
-        </button>
-        {% endfor %}
+      <div class="mt-3 reject-block service-reject-block" {% if not service_logic.reject_reason %}style="display:none;"
+        {% endif %}>
+        <label class="form-label small text-danger fw-bold">Reject Reason</label>
+        {{ service_form.reject_reason }}
       </div>
 
-      <h6 class="mt-3 mb-1">Conditions</h6>
+      <h6 class="mt-4 mb-1">Conditions</h6>
       <div id="service-conditions"></div>
       <script id="service_conditions_json" type="application/json">{{ service_conditions_json|safe }}</script>
       <input type="hidden" name="service_conditions">
 
-      <h6 class="mt-4 mb-1">Response</h6>
-      <div id="service-response-builder"></div>
-      <script id="service_response_schema_json" type="application/json">{{ service_response_schema|safe }}</script>
-      <script id="service_response_json_data" type="application/json">{{ service_response_json|safe }}</script>
-      <input type="hidden" name="service_response_json">
+      <div class="service-response-block" {% if service_logic.reject_reason %}style="display:none;" {% endif %}>
+
+        <h6 class="mt-4 mb-1">Response</h6>
+        <div id="service-response-builder"></div>
+        <script id="service_response_schema_json" type="application/json">{{ service_response_schema|safe }}</script>
+        <script id="service_response_json_data" type="application/json">{{ service_response_json|safe }}</script>
+        <input type="hidden" name="service_response_json">
+      </div>
 
       <label class="form-label mt-3 small">Test Call Info</label>
       <textarea id="service-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
@@ -181,24 +162,29 @@
       </div>
 
       <pre id="service-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></pre>
+
+      <div id="service-var-chips" class="d-flex flex-wrap gap-1 mt-3">
+        {% for key in service_available_vars %}
+        <button type="button" class="btn btn-sm btn-outline-primary insert-var" data-var="{{ key }}">{{ key }}</button>
+        {% endfor %}
+      </div>
     </form>
   </div>
 </div>
-<script id="participant_condition_schema_json" type="application/json">
-  {{ participant_condition_schema|safe }}
+
+<script>
+  document.addEventListener("input", function (e) {
+    const sel = e.target.closest(".action-selector");
+    if (!sel) return;
+    const type = sel.dataset.type;
+    const reject = (sel.value === "reject");
+    document.querySelector(`.${type}-response-block`).style.display = reject ? "none" : "";
+    document.querySelector(`.${type}-reject-block`).style.display = reject ? "" : "none";
+  });
 </script>
 
-<script id="service_condition_schema_json" type="application/json">
-  {{ service_condition_schema|safe }}
-</script>
-
-<script id="participant_conditions_json" type="application/json">
-  {{ participant_conditions_json|safe }}
-</script>
-
-<script id="service_conditions_json" type="application/json">
-  {{ service_conditions_json|safe }}
-</script>
+<script id="participant_condition_schema_json" type="application/json">{{ participant_condition_schema|safe }}</script>
+<script id="service_condition_schema_json" type="application/json">{{ service_condition_schema|safe }}</script>
 
 <script>
   window.PARTICIPANT_AVAILABLE_VARS = {{ participant_available_vars | safe }};
@@ -208,21 +194,6 @@
   window.call_info_example_values = {{ call_info_example_values | safe }};
 </script>
 
-
 <script type="module" src="{% static 'policy_engine/js/logic_editor.js' %}"></script>
 <link rel="stylesheet" href="{% static 'policy_engine/css/logic_editor.css' %}">
-<script>
-  document.querySelectorAll(".alert code").forEach(el => {
-    el.addEventListener("mouseenter", () => {
-      const vars = window.call_info_example_values || {};
-      const name = el.textContent.trim();
-
-      if (vars[name] && vars[name].length) {
-        el.setAttribute("title", "Examples: " + vars[name].slice(0, 6).join(", "));
-      }
-    });
-  });
-</script>
-
-
 {% endblock %}

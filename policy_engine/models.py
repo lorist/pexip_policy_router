@@ -23,13 +23,29 @@ class PolicyLogic(models.Model):
         related_name="advanced_logic",
     )
 
+    ACTION_CHOICES = [
+        ("allow", "Allow"),
+        ("reject", "Reject"),
+    ]
+
+    action = models.CharField(
+        max_length=10,
+        choices=ACTION_CHOICES,
+        default="allow"
+    )
+
+    reject_reason = models.CharField(
+        max_length=200,
+        blank=True,
+        default=""
+    )
     rule_type = models.CharField(max_length=20, choices=RuleType.choices)
     enabled = models.BooleanField(default=False)
 
     # ✅ Correct default shapes
     conditions = models.JSONField(default=default_conditions, blank=True)
     response = models.JSONField(default=default_response, blank=True)
-
+    reject_reason = models.CharField(max_length=255, blank=True, default="")
     description = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:

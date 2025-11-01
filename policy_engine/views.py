@@ -54,22 +54,45 @@ def logic_editor(request, rule_id):
     # Handle POST
     # -----------------------
     if request.method == "POST":
-        logic_type = request.POST.get("logic_type")
+        logic_type = request.POST.get("logic_type")  # "participant" or "service"
         logic = participant_logic if logic_type == "participant" else service_logic
         form = participant_form if logic_type == "participant" else service_form
 
+        # The UI gives us participant_action or service_action
+        action_field = f"{logic_type}_action"
+        chosen_action = request.POST.get(action_field, "allow")  # default allow
+
         if form.is_valid():
-            raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip() or '{"combiner": "all", "rules": []}'
-            logic.conditions = json.loads(raw_conditions)
+            # Store conditions
+            raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip()
+            logic.conditions = json.loads(raw_conditions or '{"combiner": "all", "rules": []}')
 
-            raw_response = request.POST.get(f"{logic_type}_response_json", "").strip() or '{"action": "continue"}'
-            logic.response = json.loads(raw_response)
-
+            # Store enable + description fields
             logic.enabled = form.cleaned_data["enabled"]
             logic.description = form.cleaned_data["description"]
+
+            # Extract reject reason (always stored in DB field)
+            reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
+            logic.reject_reason = reject_reason  # always store this, blank or not
+
+            # ✅ If REJECT is selected → full override response
+            if chosen_action == "reject":
+                logic.response = {
+                    "status": "success",
+                    "action": "reject",
+                    "result": {"reject_reason": reject_reason or "Rejected"}
+                }
+
+            # ✅ If ALLOW is selected → use builder JSON
+            else:
+                raw_response = request.POST.get(f"{logic_type}_response_json", "").strip()
+                logic.response = json.loads(raw_response or "{}")
+
             logic.save()
 
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={logic_type}")
+
+
 
     # -----------------------
     # Recent Call Info History
@@ -327,12 +350,25 @@ def logic_preview(request, rule_id):
 
     # Build rendered result
     if match["matched"]:
-        rendered = apply_template(response_template, call_info)
+        # If reject reason present — override to reject
+        if logic_type == "participant":
+            logic_obj = PolicyLogic.objects.get(rule_id=rule_id, rule_type="participant")
+        else:
+            logic_obj = PolicyLogic.objects.get(rule_id=rule_id, rule_type="service")
+
+        if getattr(logic_obj, "reject_reason", "").strip():
+            rendered = {
+                "status": "success",
+                "action": "reject",
+                "result": {"reject_reason": logic_obj.reject_reason}
+            }
+        else:
+            rendered = apply_template(response_template, call_info)
+
     else:
         rendered = {"action": "continue", "reason": "conditions_not_matched"}
 
     rendered = normalize_policy_response(rendered)
-
     return JsonResponse({
         "matched": match["matched"],
         "rendered_response": rendered,
