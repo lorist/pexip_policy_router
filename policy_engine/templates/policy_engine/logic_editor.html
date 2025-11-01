@@ -16,7 +16,6 @@
 </ul>
 
 <div class="tab-content mt-3">
-  <!-- for the preview -->
   <input type="hidden" id="rule-id" value="{{ rule.id }}">
 
   <!-- ===================== PARTICIPANT LOGIC ===================== -->
@@ -24,48 +23,42 @@
     <form method="post" class="card shadow-sm mt-3 p-3">
       {% csrf_token %}
       <input type="hidden" name="logic_type" value="participant">
-  
+
       <h5 class="mb-3">Participant Logic</h5>
+
       <div class="form-check form-switch mb-3">
         {{ participant_form.enabled }}
         <label class="form-check-label" for="{{ participant_form.enabled.id_for_label }}">Enabled</label>
       </div>
-  
+
       <div class="mb-3">
         {{ participant_form.description.label_tag }}
         {{ participant_form.description }}
       </div>
-  
-      <!-- <h6 class="mt-3 mb-2">Conditions</h6>
-      <div id="participant-conditions" class="condition-group border rounded p-2 bg-light">
-        <div class="conditions-list"></div>
-      </div> -->
+
       <h6 class="mt-3 mb-2">Conditions</h6>
       <div id="participant-conditions" class="condition-group border rounded p-2 bg-light"></div>
-      
-      <script id="participant_conditions_json" type="application/json">
-        {{ participant_conditions_json|safe }}
-      </script>
-      
+
+      <script id="participant_conditions_json" type="application/json">{{ participant_conditions_json|safe }}</script>
       <input type="hidden" name="participant_conditions">
-  
+
       <h6 class="mt-4 mb-2">Participant Response</h6>
       <div id="participant-response-builder" class="border rounded p-3 bg-white"></div>
 
       <div class="mt-3">
         <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse"
-          data-bs-target="#available-vars-{{ tab }}">
+          data-bs-target="#available-vars-participant">
           🧩 Show Available Variables
         </button>
-      
-        <div class="collapse mt-2" id="available-vars-{{ tab }}">
+        <div class="collapse mt-2" id="available-vars-participant">
           <div class="card card-body small">
-            <strong>These variables are available to reference in the response:</strong>
-            <p class="text-muted small mb-2">Click to insert into the active field.</p>
-      
+            <strong>Available Jinja Variables:</strong>
+            <p class="text-muted small mb-2">Click a chip to insert.</p>
             <div class="d-flex flex-wrap gap-2 mt-2">
               {% for var in available_call_info_vars %}
-              <button type="button" class="btn btn-outline-secondary btn-sm insert-var" data-var="{{ var }}">
+              <button type="button" class="btn btn-outline-secondary btn-sm insert-var" data-var="{{ var }}"
+                data-bs-toggle="tooltip" data-bs-placement="top"
+                title="{% if call_info_example_values.var %}Examples: {{ call_info_example_values.var|join:', ' }}{% else %}No examples yet{% endif %}">
                 {{ var }}
               </button>
               {% empty %}
@@ -76,169 +69,135 @@
         </div>
       </div>
 
-      <script id="participant_response_schema_json" type="application/json">
-        {{ participant_response_schema|safe }}
-      </script>
-  
-      <script id="participant_response_json_data" type="application/json">
-        {{ participant_response_json|safe }}
-      </script>
-  
+      <script id="participant_response_schema_json"
+        type="application/json">{{ participant_response_schema|safe }}</script>
+      <script id="participant_response_json_data" type="application/json">{{ participant_response_json|safe }}</script>
       <input type="hidden" name="participant_response_json" id="participant_response_json"
         value="{{ participant_response_json|safe }}">
-  
-      <!-- 🔍 Call Info JSON Preview Input -->
+
       <label class="form-label mt-4">Test Call Info JSON</label>
       <textarea id="participant-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
-  
+
       {% if recent_call_info_list %}
       <div class="mb-3 mt-2">
         <label class="form-label small text-muted">Recent Call Info</label>
         <div class="input-group">
           <select id="participant-call-info-history" class="form-select form-select-sm">
-            <option value="">Select a recent call...</option>
+            <option value="">Select...</option>
             {% for item in recent_call_info_list %}
             <option value='{{ item.json }}'>{{ item.label }}</option>
             {% endfor %}
           </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="participant">
-            📥 Load
-          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="participant">📥
+            Load</button>
         </div>
       </div>
       {% endif %}
-  
-      <hr>
-  
+
       <div class="text-end mt-4">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="participant">🔍
           Preview</button>
-        <button type="submit" class="btn btn-primary btn-sm">💾 Save Participant</button>
+        <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
       </div>
-  
+
       <pre id="participant-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></pre>
-  
     </form>
   </div>
-
 
   <!-- ===================== SERVICE LOGIC ===================== -->
   <div class="tab-pane fade {% if tab == 'service' %}show active{% endif %}" id="service">
     <form method="post" class="card shadow-sm mt-3 p-3">
       {% csrf_token %}
       <input type="hidden" name="logic_type" value="service">
-  
+
       <h5 class="mb-3">Service Logic</h5>
       <div class="form-check form-switch mb-3">
         {{ service_form.enabled }}
         <label class="form-check-label" for="{{ service_form.enabled.id_for_label }}">Enabled</label>
       </div>
-  
+
       <div class="mb-3">
         {{ service_form.description.label_tag }}
         {{ service_form.description }}
       </div>
-  
-      <!-- <h6 class="mt-3 mb-2">Conditions</h6>
-      <div id="service-conditions" class="condition-group border rounded p-2 bg-light">
-        <div class="conditions-list"></div>
-      </div> -->
+
       <h6 class="mt-3 mb-2">Conditions</h6>
       <div id="service-conditions" class="condition-group border rounded p-2 bg-light"></div>
-      
-      <script id="service_conditions_json" type="application/json">
-        {{ service_conditions_json|safe }}
-      </script>
-      
+
+      <script id="service_conditions_json" type="application/json">{{ service_conditions_json|safe }}</script>
       <input type="hidden" name="service_conditions">
 
-  
       <h6 class="mt-4 mb-2">Service Response</h6>
       <div id="service-response-builder" class="border rounded p-3 bg-white"></div>
-      
+
       <div class="mt-3">
         <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse"
-          data-bs-target="#available-vars-{{ tab }}">
+          data-bs-target="#available-vars-service">
           🧩 Show Available Variables
         </button>
-      
-        <div class="collapse mt-2" id="available-vars-{{ tab }}">
+        <div class="collapse mt-2" id="available-vars-service">
           <div class="card card-body small">
-            <strong>These variables are available to reference in the response:</strong>
-            <p class="text-muted small mb-2">Click to insert into the active field.</p>
-      
+            <strong>Available Variables:</strong>
+            <p class="text-muted small mb-2">Click to insert.</p>
             <div class="d-flex flex-wrap gap-2 mt-2">
               {% for var in available_call_info_vars %}
-              <button type="button" class="btn btn-outline-secondary btn-sm insert-var" data-var="{{ var }}">
-                {{ var }}
-              </button>
-              {% empty %}
-              <em>No call_info captured yet — make some calls first.</em>
+              <button type="button" class="btn btn-outline-secondary btn-sm insert-var" data-var="{{ var }}">{{ var
+                }}</button>
+              {% empty %}<em>No call_info captured yet.</em>
               {% endfor %}
             </div>
           </div>
         </div>
       </div>
 
-      <script id="service_response_schema_json" type="application/json">
-        {{ service_response_schema|safe }}
-      </script>
-  
-      <script id="service_response_json_data" type="application/json">
-        {{ service_response_json|safe }}
-      </script>
-  
+      <script id="service_response_schema_json" type="application/json">{{ service_response_schema|safe }}</script>
+      <script id="service_response_json_data" type="application/json">{{ service_response_json|safe }}</script>
       <input type="hidden" name="service_response_json" id="service_response_json"
         value="{{ service_response_json|safe }}">
-  
+
       <label class="form-label mt-4">Test Call Info JSON</label>
       <textarea id="service-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
-  
+
       {% if recent_call_info_list %}
       <div class="mb-3 mt-2">
         <label class="form-label small text-muted">Recent Call Info</label>
         <div class="input-group">
           <select id="service-call-info-history" class="form-select form-select-sm">
-            <option value="">Select a recent call...</option>
+            <option value="">Select...</option>
             {% for item in recent_call_info_list %}
             <option value='{{ item.json }}'>{{ item.label }}</option>
             {% endfor %}
           </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="service">
-            📥 Load
-          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm load-call-info" data-type="service">📥
+            Load</button>
         </div>
       </div>
       {% endif %}
-  
-      <hr>
-  
+
       <div class="text-end mt-4">
         <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="service">🔍 Preview</button>
-        <button type="submit" class="btn btn-primary btn-sm">💾 Save Service</button>
+        <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
       </div>
-  
+
       <pre id="service-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></pre>
-  
     </form>
   </div>
 </div>
 
-<!-- <script id="participant_schema_json" type="application/json">{{ participant_schema|safe }}</script>
-<script id="service_schema_json" type="application/json">{{ service_schema|safe }}</script> -->
-<script id="participant_condition_schema_json" type="application/json">
-  {{ participant_condition_schema|safe }}
-</script>
+<script id="participant_condition_schema_json" type="application/json">{{ participant_condition_schema|safe }}</script>
+<script id="service_condition_schema_json" type="application/json">{{ service_condition_schema|safe }}</script>
 
-<script id="service_condition_schema_json" type="application/json">
-  {{ service_condition_schema|safe }}
-</script>
 <script>
   window.PARTICIPANT_FIELD_VALUES = {{ participant_field_values | safe }};
   window.SERVICE_FIELD_VALUES = {{ service_field_values | safe }};
-  window.PARTICIPANT_CONDITION_SCHEMA = {{ participant_condition_schema | safe }};
-  window.SERVICE_CONDITION_SCHEMA = {{ service_condition_schema | safe }};
-  window.availableCallInfoVars = {{ available_call_info_vars|safe }};
+  window.availableCallInfoVars = {{ available_call_info_vars | safe }};
+  window.call_info_example_values = {{ call_info_example_values | safe }};
+</script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el))
+  });
 </script>
 
 <script type="module" src="{% static 'policy_engine/js/logic_editor.js' %}"></script>

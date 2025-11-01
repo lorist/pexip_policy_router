@@ -7,6 +7,22 @@ logger = logging.getLogger("policy_engine.utils")
 # regex for incoming call_info so we can use values in responses
 _variable_re = re.compile(r"{{\s*([a-zA-Z0-9_]+)\s*}}")
 
+def get_nested(data, dotted):
+    """
+    Resolve dotted keys like 'idp_attributes.mail' into nested dictionaries.
+    Returns None if any part is missing.
+    """
+    if not isinstance(data, dict):
+        return None
+
+    current = data
+    for part in dotted.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
 def evaluate_single_condition(field_value: Any, operator: str, expected_value: str) -> bool:
     """Evaluate a single atomic condition."""
     try:
@@ -75,11 +91,15 @@ def evaluate_conditions_group(group: Dict, call_info: Dict[str, Any], path="root
             field = rule.get("field")
             operator = rule.get("operator", "equals")
             expected = rule.get("value", "")
-            actual = call_info.get(field)
+
+            # ✅ NEW: dotted lookup support
+            actual = get_nested(call_info, field)
+
             matched = evaluate_single_condition(actual, operator, expected)
             results.append(matched)
             if not matched:
                 failed.append(f"{path}.{field}: expected {expected!r}, got {actual!r}")
+
 
     if combiner == "all":
         group_match = all(results)

@@ -86,23 +86,40 @@ def logic_editor(request, rule_id):
 
     def extract_call_info(log):
         params = log.request_params or {}
-        data = {
-            "call_direction": params.get("call_direction") or log.call_direction,
-            "protocol": params.get("protocol") or log.protocol,
-            "source_host": log.source_host,
-            "alias": params.get("alias"),
-            "vendor": params.get("vendor"),
-            "bandwidth": params.get("bandwidth"),
-        }
-        return {k: v for k, v in data.items() if v is not None}
 
-    recent_call_info_list = [
-        {
-            "label": f"{ci.get('alias') or '(unknown)'} — {ci.get('call_direction')} — {ci.get('protocol')}",
-            "json": json.dumps(ci, default=str),
+        # Extract idp attributes (any field starting with idp_attribute_)
+        idp_attrs = {
+            k.replace("idp_attribute_", ""): v
+            for k, v in params.items()
+            if k.startswith("idp_attribute_") and v not in (None, "", [])
         }
-        for ci in (extract_call_info(log) for log in recent_logs)
-    ]
+
+        result = {
+            **{k: v for k, v in params.items() if v not in (None, "", [])},
+            "idp_attributes": idp_attrs or None,
+            "source_host": log.source_host,
+            "call_direction": params.get("call_direction", log.call_direction),
+            "protocol": params.get("protocol", log.protocol),
+        }
+
+        # Label priority fallback chain
+        label = (
+            params.get("remote_display_name")
+            or idp_attrs.get("displayname")
+            or idp_attrs.get("mail")
+            or params.get("local_alias")
+            or "(unknown)"
+        )
+
+        summary = f"{label} — {result.get('call_direction', '?')} — {result.get('protocol', '?')}"
+
+        return {
+            "label": summary,
+            "json": json.dumps(result, default=str, indent=2),
+        }
+
+
+
 
     # -----------------------
     # Field Value Autosuggest Sets
@@ -145,57 +162,94 @@ def logic_editor(request, rule_id):
     ##############################################
     for log in recent_logs:
         params = log.request_params or {}
+        body = log.response_body or {}
 
+        # Flatten top-level params
         for field, value in params.items():
             bucket = participant_field_values.setdefault(field, set())
-
             if isinstance(value, list):
-                for v in value:
-                    bucket.add(str(v))
+                bucket.update(str(v) for v in value)
             else:
                 bucket.add(str(value))
+
+        # Flatten idp_attributes if present
+        idp_attrs = {}
+        if isinstance(body, dict):
+            idp_attrs = body.get("idp_attributes") or {}
+
+        for subkey, subval in idp_attrs.items():
+            participant_field_values.setdefault(f"idp_attributes.{subkey}", set()).add(str(subval))
+
 
     for log in recent_logs:
         params = log.request_params or {}
+        body = log.response_body or {}
 
+        # Flatten top-level params
         for field, value in params.items():
             bucket = service_field_values.setdefault(field, set())
-
             if isinstance(value, list):
-                for v in value:
-                    bucket.add(str(v))
+                bucket.update(str(v) for v in value)
             else:
                 bucket.add(str(value))
+
+        # Flatten idp_attributes if present
+        idp_attrs = {}
+        if isinstance(body, dict):
+            idp_attrs = body.get("idp_attributes") or {}
+
+        for subkey, subval in idp_attrs.items():
+            service_field_values.setdefault(f"idp_attributes.{subkey}", set()).add(str(subval))
 
 
     participant_field_values = {k: sorted(v) if isinstance(v, set) else v for k, v in participant_field_values.items()}
     service_field_values = {k: sorted(v) if isinstance(v, set) else v for k, v in service_field_values.items()}
 
     # -----------------------
-    # Collect Available Call Info Variables (for UI variable panel + autocomplete)
+    # Collect Available Call Info Variables (for UI autocomplete + variable panel)
     # -----------------------
     call_info_keys = set()
 
-    # Pull keys from recent logs
     for log in recent_logs:
         params = log.request_params or {}
-        for key in params.keys():
-            call_info_keys.add(key)
+        # Flatten identity attributes into dot notation for autocomplete use
+        for k, v in params.items():
+            if k.startswith("idp_attribute_"):
+                call_info_keys.add(f"idp_attributes.{k.replace('idp_attribute_', '')}")
 
-    # Also include any fields referenced in stored logic responses (optional but helpful)
-    try:
+    # Also include keys that exist in saved logic responses (helps re-edit view)
+    if isinstance(participant_logic.response, dict):
         call_info_keys.update(participant_logic.response.keys())
-    except Exception:
-        pass
 
-    try:
+    if isinstance(service_logic.response, dict):
         call_info_keys.update(service_logic.response.keys())
-    except Exception:
-        pass
 
-    # Sorted list for UI
     available_call_info_vars = sorted(call_info_keys)
 
+    # -----------------------
+    # Example values (to help UI show hints)
+    # -----------------------
+    example_values = {}
+    for log in recent_logs:
+        params = log.request_params or {}
+        for key, value in params.items():
+            if not value:
+                continue
+            if isinstance(value, list) and value:
+                value = value[0]
+            example_values.setdefault(key, set()).add(str(value))
+
+    # Flatten sets
+    example_values = {k: sorted(v) for k, v in example_values.items()}
+
+    # -----------------------
+    # Build UI List of Call Info
+    # -----------------------
+    recent_call_info_list = [extract_call_info(log) for log in recent_logs]
+
+
+
+    recent_call_info_list = [extract_call_info(log) for log in recent_logs]
 
     # -----------------------
     # Final Context
@@ -223,7 +277,11 @@ def logic_editor(request, rule_id):
         "participant_field_values": mark_safe(json.dumps(participant_field_values)),
         "service_field_values": mark_safe(json.dumps(service_field_values)),
         "available_call_info_vars": available_call_info_vars,
+
+        # ✅ NEW
+        "call_info_example_values": example_values,
     }
+
 
     return render(request, "policy_engine/logic_editor.html", context)
 

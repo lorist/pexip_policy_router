@@ -461,7 +461,21 @@ def proxy_service_policy(request):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+    # Flatten GET params and extract idp_attributes
+    raw_params = dict(request.GET)
+    call_info = {k: (v[0] if isinstance(v, list) else v) for k, v in raw_params.items()}
+
+    # Pull out any idp_attribute_* keys into call_info["idp_attributes"]
+    idp_attrs = {}
+    for k, v in list(call_info.items()):
+        if k.startswith("idp_attribute_"):
+            attr_name = k.replace("idp_attribute_", "")
+            idp_attrs[attr_name] = v
+            del call_info[k]
+
+    if idp_attrs:
+        call_info["idp_attributes"] = idp_attrs
+
     local_alias = call_info.get("local_alias")
     req_protocol = call_info.get("protocol")
     req_call_direction = call_info.get("call_direction")
@@ -547,7 +561,21 @@ def proxy_participant_policy(request):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
+    # Flatten GET params and extract idp_attributes
+    raw_params = dict(request.GET)
+    call_info = {k: (v[0] if isinstance(v, list) else v) for k, v in raw_params.items()}
+
+    # Pull out any idp_attribute_* keys into call_info["idp_attributes"]
+    idp_attrs = {}
+    for k, v in list(call_info.items()):
+        if k.startswith("idp_attribute_"):
+            attr_name = k.replace("idp_attribute_", "")
+            idp_attrs[attr_name] = v
+            del call_info[k]
+
+    if idp_attrs:
+        call_info["idp_attributes"] = idp_attrs
+
     local_alias = call_info.get("local_alias")
     req_protocol = call_info.get("protocol")
     req_call_direction = call_info.get("call_direction")
