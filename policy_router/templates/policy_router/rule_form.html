@@ -158,6 +158,30 @@
         {{ form.is_active }}
         <div class="form-text">Only active rules are evaluated.</div>
       </div>
+      <div class="col-md-3">
+      
+        {% if form.instance.pk %}
+        <!-- ✅ Rule exists: enable advanced logic UI -->
+        <div class="form-check form-switch">
+          <input type="checkbox" class="form-check-input" id="advanced-logic-toggle"
+            data-url="{% url 'policy_router:toggle_advanced_logic' form.instance.pk %}"
+            data-state-url="{% url 'policy_router:advanced_logic_state' form.instance.pk %}">
+          <label for="advanced-logic-toggle" class="form-check-label">
+            🧠 Advanced Logic
+          </label>
+        </div>
+      
+        <div class="form-text">Enable or disable advanced logic rules.</div>
+        <div id="advanced-logic-status" class="small mt-2 text-muted">Loading…</div>
+      
+        {% else %}
+        <!-- 🚫 Rule not created yet: show disabled hint -->
+        <div class="alert alert-secondary small mt-2">
+          Save this rule first to configure Advanced Logic.
+        </div>
+        {% endif %}
+      
+      </div>
     </div>
   </div>
   <!-- JSON Editor Modal -->
@@ -429,6 +453,77 @@ document.addEventListener("DOMContentLoaded", function() {
       }, 1000);
     });
   });
+  
+  // === Advanced Logic Toggle ===
+  const toggle = document.getElementById("advanced-logic-toggle");
+  const status = document.getElementById("advanced-logic-status");
+
+  if (toggle && status) {
+    const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value;
+    const toggleUrl = toggle.dataset.url;
+    const stateUrl  = toggle.dataset.stateUrl;
+
+    function renderState(data) {
+      const { advanced_logic_enabled, logic_exists, participant_exists, service_exists } = data;
+
+      toggle.checked = !!advanced_logic_enabled;
+
+      if (!advanced_logic_enabled) {
+        status.innerHTML = "⚪ Advanced logic is <strong>disabled</strong>.";
+        return;
+      }
+
+      let details = "";
+      if (logic_exists) {
+        const pBadge = participant_exists ? '<span class="badge text-bg-success me-1">Participant</span>' : "";
+        const sBadge = service_exists ? '<span class="badge text-bg-success me-1">Service</span>' : "";
+        details = `<div class="mt-1">${pBadge}${sBadge}
+          <a href="{{ rule.get_advanced_logic_url }}" class="ms-2">Open editor</a></div>`;
+      } else {
+        details = "<div class='mt-1 text-warning'>⚠️ No logic objects exist yet.</div>";
+      }
+
+      status.innerHTML = `✅ Advanced logic is <strong>enabled</strong>.${details}`;
+    }
+
+    async function refreshState() {
+      try {
+        const res = await fetch(stateUrl, { headers: { "Cache-Control": "no-cache" } });
+        const data = await res.json();
+        if (data.success) renderState(data);
+        else status.textContent = "Unable to load advanced logic state.";
+      } catch (err) {
+        console.error("Error loading state:", err);
+        status.textContent = "Error loading advanced logic state.";
+      }
+    }
+
+    toggle.addEventListener("change", async () => {
+      const prev = status.innerHTML;
+      status.innerHTML = "⏳ Saving...";
+      try {
+        const res = await fetch(toggleUrl, {
+          method: "POST",
+          headers: { "X-CSRFToken": csrfToken },
+        });
+        const data = await res.json();
+        if (!data.success) {
+          status.innerHTML = prev;
+          alert("Failed to toggle advanced logic.");
+          return;
+        }
+        renderState(data);
+      } catch (err) {
+        console.error("Error toggling:", err);
+        status.innerHTML = prev;
+        alert("Error toggling advanced logic.");
+      }
+    });
+
+    // initial hydrate
+    refreshState();
+  }
+
 });
 </script>
 

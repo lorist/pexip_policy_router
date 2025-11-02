@@ -11,7 +11,7 @@ from django.conf import settings
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404, render
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from django.urls import reverse
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -22,6 +22,8 @@ from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
+from policy_engine.models import PolicyLogic
+from policy_engine.utils import evaluate_conditions, apply_template, normalize_policy_response
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
@@ -29,6 +31,15 @@ from django.db import transaction
 
 # Setup console logging
 logger = logging.getLogger(__name__)
+
+def finalize_response(response_json, call_info, status=200):
+    """
+    Apply Jinja templating + policy response normalization,
+    and return a proper JsonResponse.
+    """
+    response_json = apply_template(response_json, call_info)
+    response_json = normalize_policy_response(response_json)
+    return JsonResponse(response_json, status=status)
 
 def _increment_rule_usage(rule: PolicyProxyRule):
     """Increment usage metrics for a rule."""
@@ -91,36 +102,75 @@ def maybe_basic_auth_protected(view_func):
 
     return _wrapped
 
-def _log_request(rule, request, response=None, is_override=False, override_response=None):
-    """Log inbound policy requests to DB"""
-    from .models import PolicyRequestLog
+# def _log_request(
+#     rule,
+#     request,
+#     response=None,
+#     is_override=False,
+#     override_response=None,
+#     matched_logic=False,
+#     logic_response=None,
+# ):
+def _log_request(
+    rule,
+    request,
+    upstream_response=None,
+    matched_logic=False,
+    logic_response=None,
+    is_override=False,
+    override_response=None,
+):
+    """
+    Single unified logging function — ensures we always store the *rendered* policy response.
+    """
+    try:
+        # Normalize call info for consistent templating
+        call_info = {k: v[0] if isinstance(v, list) else v for k, v in dict(request.GET).items()}
 
-    client_ip = _get_client_ip(request)
-    host = request.META.get("HTTP_HOST", "")
-    source_host = client_ip or host or None
+        # Render logic response if provided
+        rendered_logic = None
+        if logic_response:
+            rendered_logic = apply_template(logic_response, call_info)
+            rendered_logic = normalize_policy_response(rendered_logic)
 
-    # Capture request params for GET requests
-    req_params = request.GET.dict() if request.method == "GET" else {}
-    if is_override:
-        resp_content = override_response 
-    elif response is not None:
-        try:
-            resp_content = response.json()
-        except Exception:
-            resp_content = {"raw": getattr(response, "text", "")} 
-    else:
-        resp_content = None
+        # Render override response if applicable
+        rendered_override = None
+        if override_response:
+            rendered_override = apply_template(override_response, call_info)
+            rendered_override = normalize_policy_response(rendered_override)
 
-    return PolicyRequestLog.objects.create(
-        rule=rule,
-        request_path=request.path,
-        request_method=request.method,
-        request_params=req_params,
-        response_body=resp_content,
-        response_status=getattr(response, "status_code", 200),
-        is_override=is_override,
-        source_host=source_host,
-    )
+        # Determine what response to store
+        if matched_logic and rendered_logic is not None:
+            final_body = rendered_logic
+            final_status = 200
+        elif is_override and rendered_override is not None:
+            final_body = rendered_override
+            final_status = 200
+        elif upstream_response is not None:
+            final_status = upstream_response.status_code
+            try:
+                final_body = upstream_response.json()
+            except Exception:
+                final_body = {"raw": upstream_response.text}
+        else:
+            final_status = 200
+            final_body = None
+
+        PolicyRequestLog.objects.create(
+            rule=rule,
+            request_method=request.method,
+            request_path=request.path,
+            request_params=dict(request.GET),
+            response_status=final_status,
+            response_body=final_body,
+            source_host=_get_client_ip(request) or request.get_host(),
+            matched_logic=matched_logic,
+            is_override=is_override,
+        )
+
+    except Exception:
+        logger.exception(f"Logging failed for rule {rule.id}: {rule.name}")
+
 
 
 @maybe_protected
@@ -406,188 +456,192 @@ def rule_tester(request):
 @csrf_exempt
 @maybe_basic_auth_protected
 def proxy_service_policy(request):
-    """Proxy for /policy/v1/service/configuration (always GET)."""
     logger.info("Received a service/configuration request")
-    logger.debug(f"Incoming headers: {request.headers._store} ")    
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    local_alias = request.GET.get("local_alias")
-    req_protocol = request.GET.get("protocol")
-    req_call_direction = request.GET.get("call_direction")
+    # Flatten GET params and extract idp_attributes
+    raw_params = dict(request.GET)
+    call_info = {k: (v[0] if isinstance(v, list) else v) for k, v in raw_params.items()}
+
+    # Pull out any idp_attribute_* keys into call_info["idp_attributes"]
+    idp_attrs = {}
+    for k, v in list(call_info.items()):
+        if k.startswith("idp_attribute_"):
+            attr_name = k.replace("idp_attribute_", "")
+            idp_attrs[attr_name] = v
+            del call_info[k]
+
+    if idp_attrs:
+        call_info["idp_attributes"] = idp_attrs
+
+    local_alias = call_info.get("local_alias")
+    req_protocol = call_info.get("protocol")
+    req_call_direction = call_info.get("call_direction")
     client_ip = _get_client_ip(request)
-    logger.debug(f"client_ip is: {client_ip}")
     client_host = request.META.get("HTTP_HOST", "").split(":")[0].lower() if request.META.get("HTTP_HOST") else None
-    logger.debug(f"HTTP host is: {client_host}")
-    
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            # Match alias first
             if not re.search(rule.regex, local_alias or ""):
                 continue
-
-            # Match protocol and call_direction
             if rule.protocols and req_protocol and req_protocol not in rule.protocols:
                 continue
             if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                 continue
-
-            # Match source IP/host (NEW: safely skip instead of blocking)
             if rule.source_match:
                 src = rule.source_match.strip().lower()
-                if not (
-                    client_ip == src
-                    or client_host == src
-                    or (src in (client_ip or ""))
-                    or (src in (client_host or ""))
-                ):
-                    continue  # Only skip, do NOT break/return
+                if client_ip != src and client_host != src and src not in (client_ip or "") and src not in (client_host or ""):
+                    continue
 
-            # --- Reached this point: full match ---
             _increment_rule_usage(rule)
 
-            # --- Override check ---
+            # === Service logic ===
+            try:
+                service_logic = PolicyLogic.objects.get(rule=rule, rule_type="service", enabled=True)
+                match = evaluate_conditions(service_logic.conditions, call_info)
+                if match["matched"]:
+                    response_json = service_logic.response or {"action": "continue"}
+                    _log_request(rule, request, matched_logic=True, logic_response=response_json)
+                    return finalize_response(response_json, call_info)
+            except PolicyLogic.DoesNotExist:
+                pass
+
+            # === Participant logic fallback ===
+            try:
+                participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
+                match = evaluate_conditions(participant_logic.conditions, call_info)
+                if match["matched"]:
+                    response_json = participant_logic.response or {"action": "continue"}
+                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
+                    return finalize_response(response_json, call_info)
+            except PolicyLogic.DoesNotExist:
+                pass
+
+            # === Override ===
             if rule.always_continue_service:
-                response_json = rule.override_service_response or {
-                    "status": "success",
-                    "action": "continue",
-                }
-                logger.info(f"Rule is an override, returning: {response_json}")
+                response_json = rule.override_service_response or {"action": "continue"}
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
-                return JsonResponse(response_json)
+                return finalize_response(response_json, call_info)
 
-            # --- Upstream proxy ---
+            # === Upstream ===
             if rule.service_target_url:
-                upstream = rule.service_target_url.rstrip("/")
-                logger.info(f"Sending to upstream URL: {upstream}")
+                resp = httpx.get(
+                    rule.service_target_url.rstrip("/") + request.path,
+                    params=request.GET,
+                    headers=_build_safe_headers(request),
+                    auth=((rule.basic_auth_username, rule.basic_auth_password)
+                          if rule.basic_auth_username and rule.basic_auth_password else None),
+                    timeout=10.0,
+                )
+                _log_request(rule, request, resp)
                 try:
-                    resp = httpx.get(
-                        upstream + request.path,
-                        params=request.GET,
-                        headers=_build_safe_headers(request),
-                        auth=(
-                            (rule.basic_auth_username, rule.basic_auth_password)
-                            if rule.basic_auth_username and rule.basic_auth_password
-                            else None
-                        ),
-                        timeout=10.0,
-                    )
-                    _log_request(rule, request, resp)
-
-                    try:
-                        logger.info(f"Upstream returned status code {resp.status_code}")
-                        logger.debug(f"Response content: {resp.content}")
-                        return JsonResponse(resp.json(), status=resp.status_code)
-
-                    except ValueError:
-                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
-
-                except httpx.RequestError as e:
-                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+                    return finalize_response(resp.json(), call_info, status=resp.status_code)
+                except ValueError:
+                    return JsonResponse({"raw": resp.text}, status=resp.status_code)
 
         except re.error as e:
             logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
 
-    # Only reached if no matching rule after full loop
-    logger.warning("No matching rule, returning 404")
+    logger.warning("No matching service policy rule")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
+
 
 
 @csrf_exempt
 @maybe_basic_auth_protected
 def proxy_participant_policy(request):
-    """Proxy for /policy/v1/participant/properties (always GET)."""
     logger.info("Received a participant/properties request")
-    logger.debug(f"Incoming headers: {request.headers._store} ")
 
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
 
-    local_alias = request.GET.get("local_alias")
-    req_protocol = request.GET.get("protocol")
-    req_call_direction = request.GET.get("call_direction")
+    # Flatten GET params and extract idp_attributes
+    raw_params = dict(request.GET)
+    call_info = {k: (v[0] if isinstance(v, list) else v) for k, v in raw_params.items()}
+
+    # Pull out any idp_attribute_* keys into call_info["idp_attributes"]
+    idp_attrs = {}
+    for k, v in list(call_info.items()):
+        if k.startswith("idp_attribute_"):
+            attr_name = k.replace("idp_attribute_", "")
+            idp_attrs[attr_name] = v
+            del call_info[k]
+
+    if idp_attrs:
+        call_info["idp_attributes"] = idp_attrs
+
+    local_alias = call_info.get("local_alias")
+    req_protocol = call_info.get("protocol")
+    req_call_direction = call_info.get("call_direction")
     client_ip = _get_client_ip(request)
-    logger.debug(f"client_ip is: {client_ip}")
-    client_host = request.get_host().split(":")[0] if "HTTP_HOST" in request.META else None
-    logger.debug(f"HTTP host is: {client_host}")
-    
+    client_host = request.get_host().split(":")[0] if request.get_host() else None
+
     rules = PolicyProxyRule.objects.filter(is_active=True).order_by("priority", "-updated_at")
 
     for rule in rules:
         try:
-            # Match alias first
             if not re.search(rule.regex, local_alias or ""):
                 continue
-
-            # Match protocol and call_direction
             if rule.protocols and req_protocol and req_protocol not in rule.protocols:
                 continue
             if rule.call_directions and req_call_direction and req_call_direction not in rule.call_directions:
                 continue
-
-            # Match source IP/host (NEW)
             if rule.source_match:
                 src = rule.source_match.strip().lower()
-                if not (
-                    client_ip == src
-                    or client_host == src
-                    or (src in (client_ip or ""))
-                    or (src in (client_host or ""))
-                ):
-                    continue  # Skip gracefully
+                if client_ip != src and client_host != src and src not in (client_ip or "") and src not in (client_host or ""):
+                    continue
 
-            # --- Reached this point: full match ---
             _increment_rule_usage(rule)
 
-            # --- Override check ---
+            # === Participant logic ===
+            try:
+                participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
+                match = evaluate_conditions(participant_logic.conditions, call_info)
+                if match["matched"]:
+                    response_json = participant_logic.response or {"action": "continue"}
+                    _log_request(rule, request, is_override=True, override_response=response_json)
+                    return finalize_response(response_json, call_info)
+            except PolicyLogic.DoesNotExist:
+                pass
+
+            # === Override ===
             if rule.always_continue_participant:
-                response_json = rule.override_participant_response or {
-                    "status": "success",
-                    "action": "continue",
-                }
-                logger.info(f"Rule is an override, returning: {response_json}")
+                response_json = rule.override_participant_response or {"action": "continue"}
                 _log_request(rule, request, None, is_override=True, override_response=response_json)
-                return JsonResponse(response_json)
+                return finalize_response(response_json, call_info)
 
-            # --- Upstream proxy ---
+            # === Upstream ===
             if rule.participant_target_url:
-                upstream = rule.participant_target_url.rstrip("/")
-                logger.info(f"Sending to upstream URL: {upstream}")
+                resp = httpx.get(
+                    rule.participant_target_url.rstrip("/") + request.path,
+                    params=request.GET,
+                    headers=_build_safe_headers(request),
+                    auth=((rule.basic_auth_username, rule.basic_auth_password)
+                          if rule.basic_auth_username and rule.basic_auth_password else None),
+                    timeout=10.0,
+                )
+                _log_request(rule, request, resp)
                 try:
-                    resp = httpx.get(
-                        upstream + request.path,
-                        params=request.GET,
-                        headers=_build_safe_headers(request),
-                        auth=(
-                            (rule.basic_auth_username, rule.basic_auth_password)
-                            if rule.basic_auth_username and rule.basic_auth_password
-                            else None
-                        ),
-                        timeout=10.0,
-                    )
-                    _log_request(rule, request, resp)
+                    return finalize_response(resp.json(), call_info, status=resp.status_code)
+                except ValueError:
+                    return JsonResponse({"raw": resp.text}, status=resp.status_code)
 
-                    try:
-                        logger.info(f"Upstream returned status code {resp.status_code}")
-                        logger.debug(f"Response content: {resp.content}")
-                        return JsonResponse(resp.json(), status=resp.status_code)
-
-                    except ValueError:
-                        return JsonResponse({"raw": resp.text}, status=resp.status_code)
-
-                except httpx.RequestError as e:
-                    return JsonResponse({"error": f"Upstream request failed: {e}"}, status=502)
+            return finalize_response({"action": "continue"}, call_info)
 
         except re.error as e:
             logger.error(f"Regex error in rule {rule.name}: {e}")
             continue
 
-    logger.warning("No matching rule, returning 404")
+    logger.warning("No matching participant policy rule")
     return JsonResponse({"error": "No matching rule"}, status=404)
+
+
 
 
 # -----------------------------
@@ -708,7 +762,23 @@ def rule_edit(request, pk):
             return redirect(reverse("policy_router:rule_list"))
     else:
         form = PolicyProxyRuleForm(instance=rule)
-    return render(request, "policy_router/rule_form.html", {"form": form})
+        # Determine if advanced participant/service logic exist
+        from policy_engine.models import PolicyLogic
+        logic_exists = PolicyLogic.objects.filter(rule=rule).exists()
+        participant_logic = PolicyLogic.objects.filter(rule=rule, rule_type="participant").first()
+        service_logic = PolicyLogic.objects.filter(rule=rule, rule_type="service").first()
+
+        return render(
+            request,
+            "policy_router/rule_form.html",
+            {
+                "form": form,
+                "rule": rule,
+                "logic_exists": logic_exists,
+                "participant_logic": participant_logic,
+                "service_logic": service_logic,
+            },
+        )
 
 @maybe_protected
 def rule_delete(request, pk):
@@ -843,6 +913,67 @@ def rule_check_duplicates(request):
 
     return render(request, "policy_router/rule_duplicates.html", {
         "duplicates": duplicates,
+    })
+
+@require_GET
+def advanced_logic_state(request, rule_id: int):
+    """Return the full logic state for a given rule."""
+    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    participant_exists = PolicyLogic.objects.filter(rule=rule, rule_type="participant").exists()
+    service_exists = PolicyLogic.objects.filter(rule=rule, rule_type="service").exists()
+    logic_exists = participant_exists or service_exists
+
+    return JsonResponse({
+        "success": True,
+        "rule_id": rule.id,
+        "advanced_logic_enabled": bool(rule.advanced_logic_enabled),
+        "logic_exists": logic_exists,
+        "participant_exists": participant_exists,
+        "service_exists": service_exists,
+    })
+
+
+@require_POST
+@transaction.atomic
+def toggle_advanced_logic(request, rule_id: int):
+    """
+    Toggle the advanced logic flag on a rule.
+
+    - When enabling: ensure both participant & service PolicyLogic objects exist.
+    - When disabling: delete all related PolicyLogic objects.
+    """
+    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    enable = not rule.advanced_logic_enabled
+
+    if enable:
+        # Create missing logic objects if enabling
+        for rtype in ("participant", "service"):
+            PolicyLogic.objects.get_or_create(
+                rule=rule,
+                rule_type=rtype,
+                defaults={"enabled": True, "conditions": {}, "response": {}},
+            )
+    else:
+        # Delete all logic objects if disabling
+        PolicyLogic.objects.filter(rule=rule).delete()
+
+    # The signal should keep rule.advanced_logic_enabled synced,
+    # but we’ll set and save it manually for immediate response
+    rule.advanced_logic_enabled = enable
+    rule.save(update_fields=["advanced_logic_enabled"])
+
+    # Compute final state to return
+    participant_exists = PolicyLogic.objects.filter(rule=rule, rule_type="participant").exists()
+    service_exists = PolicyLogic.objects.filter(rule=rule, rule_type="service").exists()
+    logic_exists = participant_exists or service_exists
+
+    return JsonResponse({
+        "success": True,
+        "rule_id": rule.id,
+        "advanced_logic_enabled": enable,
+        "logic_exists": logic_exists,
+        "participant_exists": participant_exists,
+        "service_exists": service_exists,
     })
 
 # -----------------------------
