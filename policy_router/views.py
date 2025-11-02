@@ -171,7 +171,10 @@ def _log_request(
     except Exception:
         logger.exception(f"Logging failed for rule {rule.id}: {rule.name}")
 
-
+def index(request):
+    if request.user.is_authenticated:
+        return redirect("policy_router:rule_list")
+    return render(request, "policy_router/index.html")
 
 @maybe_protected
 @require_http_methods(["GET"])
