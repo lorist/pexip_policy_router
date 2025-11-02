@@ -101,29 +101,34 @@ def logic_editor(request, rule_id):
             logic.enabled = form.cleaned_data["enabled"]
             logic.description = form.cleaned_data["description"]
 
-            # Always store reject reason (used for UI state and reject messages)
-            reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
-            logic.reject_reason = reject_reason
+            # Always store the reject reason field for UI state
+            # Always store description & enabled
+            logic.enabled = form.cleaned_data["enabled"]
+            logic.description = form.cleaned_data["description"]
 
-            # REJECT
+            # Clear reject reason unless action == reject
+            reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
+            if chosen_action == "reject":
+                logic.reject_reason = reject_reason
+            else:
+                logic.reject_reason = ""
+                
             if chosen_action == "reject":
                 logic.response = {
                     "status": "success",
                     "action": "reject",
-                    "result": {"reject_reason": reject_reason or "Call rejected"}
+                    "result": {"reject_reason": reject_reason or "Call rejected"},
                 }
 
-            # REDIRECT (SERVICE ONLY)
             elif chosen_action == "redirect":
                 new_alias = request.POST.get("service_new_alias", "").strip()
                 logic.response = {
                     "status": "success",
                     "action": "redirect",
-                    "result": {"new_alias": new_alias}
+                    "result": {"new_alias": new_alias},
                 }
 
-            # ALLOW → use JSON from the response builder
-            else:  # ✅ ALLOW
+            else:  # allow
                 raw_response = request.POST.get(f"{logic_type}_response_json", "")
                 logic.response = _normalize_builder_payload(raw_response)
 
