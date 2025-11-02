@@ -1,5 +1,5 @@
 {% extends "policy_router/base.html" %}
-{% load static %}
+{% load static get_item %}
 {% block title %}Advanced Logic Editor – {{ rule.name }}{% endblock %}
 
 {% block content %}
@@ -22,6 +22,96 @@
       <input type="hidden" name="logic_type" value="participant">
 
       <h5>Participant Logic</h5>
+      <div class="alert alert-info small collapsible-help mb-3">
+        <strong>Participant Logic Overview</strong>
+        <p class="mb-1">
+          This rule applies when a <em>participant</em> joins a conference. You can:
+        </p>
+        <ul class="small mb-2">
+          <li><strong>Match conditions</strong> based on call information (identity, device, protocol, etc.)</li>
+          <li><strong>Reject</strong> the call with a reason message</li>
+          <li><strong>Allow</strong> and optionally <strong>modify participant behavior</strong> using the response builder
+          </li>
+        </ul>
+      
+        <details>
+          <summary class="fw-semibold">Using Variables in Responses (Click to Expand)</summary>
+          <div class="mt-2">
+            <p class="small mb-1">
+              Anywhere text is accepted, you may use Jinja expressions:
+            </p>
+            
+            <pre class="bg-light p-2 small mb-2">{% verbatim %}{{ remote_alias }} joined from {{ location }}{% endverbatim %}</pre>
+            <hr class="my-4">
+            
+            <hr class="my-4">
+            
+            <h6>🧠 Using Jinja in Response Fields</h6>
+            <p class="small">Response values may contain Jinja expressions that dynamically reference call information.</p>
+            
+            <div class="alert alert-info small">
+              <strong>Conditional Response Example</strong>
+              {% verbatim %}
+              <pre><code>{
+              "remote_display_name": "{{ idp_attributes.displayname | default(remote_display_name) | default('Guest User') }}",
+              "preauthenticated_role": "{{ 'chair' if call_direction == 'dial_in' else 'guest' }}",
+              "rx_presentation_policy": "{{ 'ALLOW' if participant_type == 'api_host' else 'DENY' }}"
+            }</code></pre>
+              {% endverbatim %}
+            </div>
+            
+            <div class="alert alert-secondary small">
+              <strong>Multi-Line If / Else Example</strong>
+              {% verbatim %}
+              <pre><code>{% if idp_attributes.organization %}
+            Welcome {{ idp_attributes.displayname }} from {{ idp_attributes.organization }}!
+            {% elif remote_display_name %}
+            Hello {{ remote_display_name }}!
+            {% else %}
+            Hello guest!
+            {% endif %}</code></pre>
+              {% endverbatim %}
+            </div>
+
+
+            <p class="small mb-1 fw-semibold">Available Variables & Example Values:</p>
+            
+            <table class="table table-sm table-bordered small bg-white">
+              <thead class="table-light">
+                <tr>
+                  <th>Variable</th>
+                  <th>Example Value(s)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for var in participant_available_vars %}
+                <tr>
+                  <td><code>{{ var }}</code></td>
+                  <td>
+                    {% with vals=call_info_example_values|get_item:var %}
+                    {% if vals %}
+                    {% for v in vals|slice:":3" %}
+                    <code class="me-1">{{ v }}</code>
+                    {% endfor %}
+                    {% else %}
+                    <span class="text-muted">no sample yet</span>
+                    {% endif %}
+                    {% endwith %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+
+            <p class="small mt-2 mb-1 fw-semibold">Common Useful Filters:</p>
+            <code class="small">| lower</code>,
+            <code class="small">| upper</code>,
+            <code class="small">| title</code>,
+            <code class="small">| default("value")</code>,
+            <code class="small">| replace("from","to")</code>
+          </div>
+        </details>
+      </div>
 
       <div class="form-check form-switch mb-3">
         {{ participant_form.enabled }} <label>Enabled</label>
@@ -83,6 +173,30 @@
       <input type="hidden" name="logic_type" value="service">
 
       <h5>Service Logic</h5>
+      <div class="alert alert-info small collapsible-help mb-3">
+        <strong>Service Logic Overview</strong>
+        <p class="mb-1">
+          This rule applies when a <em>service</em> (conference space, gateway, or virtual reception) is created or accessed.
+        </p>
+        <ul class="small mb-2">
+          <li><strong>Allow</strong> → Modify service configuration using the response builder</li>
+          <li><strong>Reject</strong> → Block usage and optionally show a message</li>
+          <li><strong>Redirect</strong> → Send the participant to another service alias</li>
+        </ul>
+      
+        <details>
+          <summary class="fw-semibold">Using Variables in Responses (Click to Expand)</summary>
+          <div class="mt-2">
+            <pre class="bg-light p-2 small mb-2">{{ remote_display_name }} is connecting from {{ vendor }}</pre>
+            <p class="small mb-1 fw-semibold">Available Variables:</p>
+            <div class="d-flex flex-wrap gap-1">
+              {% for var in service_available_vars %}
+              <code class="border rounded px-1 small">{{ var }}</code>
+              {% endfor %}
+            </div>
+          </div>
+        </details>
+      </div>
 
       <div class="form-check form-switch mb-3">
         {{ service_form.enabled }} <label>Enabled</label>
