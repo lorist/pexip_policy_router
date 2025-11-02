@@ -23,27 +23,29 @@ https://learn.microsoft.com/en-us/azure/app-service/tutorial-python-postgresql-a
 
 Once the Azure Web App has been deployed enviroment variables are used by the Django app settings:
 
-- **SCM_DO_BUILD_DURING_DEPLOYMENT** Should be set to true by default
-- **DISABLE_COLLECTSTATIC** Set to true
-- **DB_NAME** .. "postgres" by default
-- **DB_USER** .. SQL admin username configured when creating Azure PostgreSQL service
-- **DB_PW** .. SQL admin password configured when creating Azure PostgreSQL service
-- **DB_HOST** .. SQL endpoint/hostname configured when creating Azure PostgreSQL service e.g. dbname.postgres.database.azure.com
-- **DJANGO_SECRET_KEY** .. Secret key used by Django for encryption and token management
+- **DB_NAME** "postgres" to use default db or as configured in Azure PostgreSQL service
+- **DB_USER** SQL amin username configured when creating Azure PostgreSQL service
+- **DB_PW** SQL admin password configured when creating Azure PostgreSQL service
+- **DB_HOST** SQL endpoint/hostname configured when creating Azure PostgreSQL service e.g. dbname.postgres.database.azure.com
+- **DJANGO_SECRET_KEY** Secret key used by Django for encryption and token management
+- **POST_BUILD_COMMAND** "python manage.py migrate --settings pexip_policy_router.settings_AzureWebApp"
 
 These enviroment variables can be configured directly in Azure Portal or using VSCode with Azure Extensions
 
 ### Deploy app
 
-Use VSCode to deploy the repo to Web App
+Use VSCode or GitHub source to deploy the repo to Web App
 
-### Post Deploy
+### Post 1st Deploy
 
-Once app is deployed the database needs to be managed
+Once app is deployed the database needs to be managed to create the WebUI user
 
 - SSH onto app via Azure Portal
 
 Run database migration & super user commands:
 
+- `python manage.py makemigrations policy_router`
 - `python manage.py migrate --settings pexip_policy_router.settings_AzureWebApp`
 - `python manage.py createsuperuser --settings pexip_policy_router.settings_AzureWebApp`
+
+N.B. the `manage.py migrate` command will be run automatcilly on deployment via the **POST_BUILD_COMMAND** env variable
