@@ -50,6 +50,36 @@ def logic_editor(request, rule_id):
     participant_form = PolicyLogicForm(request.POST or None, instance=participant_logic, prefix="participant")
     service_form = PolicyLogicForm(request.POST or None, instance=service_logic, prefix="service")
 
+    def _normalize_builder_payload(raw_json: str | None) -> dict:
+        """
+        Accepts the JSON string coming from the response builder.
+        Returns a dict in the strict Pexip shape:
+        {"status":"success","action":"continue","result":{...}}
+        Any top-level keys other than status/action/result are moved into result.
+        """
+        try:
+            parsed = json.loads((raw_json or "").strip() or "{}")
+        except Exception:
+            parsed = {}
+
+        if not isinstance(parsed, dict):
+            parsed = {}
+
+        # Start with an existing result if present and valid
+        result = parsed.get("result")
+        result = result if isinstance(result, dict) else {}
+
+        # Move *all* non-reserved top-level keys into result
+        for k, v in list(parsed.items()):
+            if k not in ("status", "action", "result"):
+                result[k] = v
+
+        return {
+            "status": "success",
+            "action": "continue",
+            "result": result,
+        }
+
     # -----------------------
     # Handle POST
     # -----------------------
@@ -75,7 +105,7 @@ def logic_editor(request, rule_id):
             reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
             logic.reject_reason = reject_reason
 
-            # ✅ REJECT
+            # REJECT
             if chosen_action == "reject":
                 logic.response = {
                     "status": "success",
@@ -83,7 +113,7 @@ def logic_editor(request, rule_id):
                     "result": {"reject_reason": reject_reason or "Call rejected"}
                 }
 
-            # ✅ REDIRECT (SERVICE ONLY)
+            # REDIRECT (SERVICE ONLY)
             elif chosen_action == "redirect":
                 new_alias = request.POST.get("service_new_alias", "").strip()
                 logic.response = {
@@ -92,10 +122,10 @@ def logic_editor(request, rule_id):
                     "result": {"new_alias": new_alias}
                 }
 
-            # ✅ ALLOW → use JSON from the response builder
-            else:
-                raw_response = request.POST.get(f"{logic_type}_response_json", "").strip()
-                logic.response = json.loads(raw_response or "{}")
+            # ALLOW → use JSON from the response builder
+            else:  # ✅ ALLOW
+                raw_response = request.POST.get(f"{logic_type}_response_json", "")
+                logic.response = _normalize_builder_payload(raw_response)
 
             logic.save()
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={logic_type}")
@@ -246,28 +276,33 @@ def logic_editor(request, rule_id):
                 for name, details in schema.items()
             ]
         }
-    def current_service_mode(logic):
-        action = logic.response.get("action")
+    
+    def get_mode(logic):
+        action = (logic.response or {}).get("action", "continue")
         if action == "reject":
             return "reject"
         if action == "redirect":
             return "redirect"
         return "allow"  # default
 
-    # -----------------------
-    # Final Context
-    # -----------------------
+    # Determine UI mode from stored response
+    participant_mode = get_mode(participant_logic)
+    service_mode = get_mode(service_logic)
+
     context = {
         "rule": rule,
         "tab": tab,
+
         "participant_form": participant_form,
         "service_form": service_form,
         "participant_logic": participant_logic,
         "service_logic": service_logic,
-        "service_mode": current_service_mode(service_logic),
+
+        "participant_mode": participant_mode,
+        "service_mode": service_mode,
+
         "participant_condition_schema": mark_safe(json.dumps(to_field_list(PARTICIPANT_CALL_INFO_SCHEMA))),
         "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA))),
-
 
         "participant_conditions_json": json.dumps(participant_logic.conditions),
         "service_conditions_json": json.dumps(service_logic.conditions),
@@ -287,6 +322,7 @@ def logic_editor(request, rule_id):
         "service_available_vars": service_available_vars,
         "call_info_example_values": example_values,
     }
+
 
     return render(request, "policy_engine/logic_editor.html", context)
 

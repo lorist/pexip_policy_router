@@ -3,19 +3,15 @@ from django.utils.translation import gettext_lazy as _
 from policy_router.models import PolicyProxyRule
 
 def default_conditions():
-    # Root group always exists
     return {"combiner": "all", "rules": []}
 
 def default_response():
-    return {"action": "continue"}
+    return {"status": "success", "action": "continue", "result": {}}
 
 class PolicyLogic(models.Model):
     class RuleType(models.TextChoices):
         PARTICIPANT = "participant", _("Participant")
         SERVICE = "service", _("Service")
-
-    PARTICIPANT = RuleType.PARTICIPANT
-    SERVICE = RuleType.SERVICE
 
     rule = models.ForeignKey(
         PolicyProxyRule,
@@ -23,28 +19,12 @@ class PolicyLogic(models.Model):
         related_name="advanced_logic",
     )
 
-    ACTION_CHOICES = [
-        ("allow", "Allow"),
-        ("reject", "Reject"),
-    ]
-
-    action = models.CharField(
-        max_length=10,
-        choices=ACTION_CHOICES,
-        default="allow"
-    )
-
-    reject_reason = models.CharField(
-        max_length=200,
-        blank=True,
-        default=""
-    )
     rule_type = models.CharField(max_length=20, choices=RuleType.choices)
     enabled = models.BooleanField(default=False)
 
-    # ✅ Correct default shapes
     conditions = models.JSONField(default=default_conditions, blank=True)
     response = models.JSONField(default=default_response, blank=True)
+
     reject_reason = models.CharField(max_length=255, blank=True, default="")
     description = models.CharField(max_length=255, blank=True, default="")
 
