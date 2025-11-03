@@ -63,6 +63,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
+STATIC_ROOT = "./static/" # Declare static file location when deployed to Azure or if local run of "python .\manage.py collectstatic"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = '/login/'
