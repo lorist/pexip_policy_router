@@ -1,106 +1,139 @@
-# Pexip Policy Router
+# Pexip Policy Router & Advanced Policy Engine
 
-A **Django-based proxy and management interface** for routing **Pexip Infinity Service** and **Participant Policy** requests.  
-Administrators can configure **regex-based rules** to forward or override policy requests to one or more upstream servers — with live metrics, duplicate detection, and a modern web UI.
+A **Django-based external policy orchestration layer** for **Pexip Infinity**.  
+It allows administrators to define **routing, override, and dynamic transformation rules** for both:
 
----
+- **Service Policy** (`/policy/v1/service/configuration`)
+- **Participant Policy** (`/policy/v1/participant/properties`)
 
-## Core Capabilities
-
-- **Service Policy Proxy** → `/policy/v1/service/configuration`  
-- **Participant Policy Proxy** → `/policy/v1/participant/properties`
-- **Regex Rule Matching** on `local_alias`
-- **Optional filters** for `protocol` and `call_direction`
-- **Rule Priority Ordering** (lower numbers evaluated first)
-- **Basic Authentication** per upstream
-- **Full request / response logging**
-- **Web UI for rules & logs**
-- **Import / Export via CSV**
+Rules may:
+- Proxy to upstream systems
+- Apply **dynamic Jinja-based policy transformations**
+- Perform **conditional routing** using a graphical policy logic builder
+- Use **IdP attributes** for entitlement-based access decisions
 
 ---
 
-## Modern UI Features
+## ✨ Major Capabilities
+
+| Capability | Description |
+|-----------|-------------|
+| **Regex Rule Routing** | Match calls by `local_alias`, `protocol`, and `call_direction` |
+| **Upstream Proxying** | Forward requests to remote policy systems with optional Basic Auth |
+| **Local Override Responses** | Return custom JSON without proxying upstream |
+| **Advanced Logic Engine** | Visual UI for nested AND/OR conditions |
+| **Jinja Template Support** | Render dynamic values from call information & IdP claims |
+| **Per-Rule Response Modes** | Continue, Reject (with reason), Redirect (to new alias) |
+| **Identity Attributes Registry** | Manage user attributes made available to logic & templating |
+| **CSV Import/Export** | Full configuration portability (rules, logic, identities) |
+| **Condition Preview Tools** | Test a single rule or full logic outcome with real call data |
+| **Audit Logging** | Records every request, matched rule, and resulting response |
+
+---
+
+## 🧠 Policy Logic Editor
+
+The **Logic Editor** provides:
+- Nested groups with **Match All (AND)** / **Match Any (OR)**
+- Field-aware operator selection based on detected type:
+  - `string`, `number`, `bool`, and **IdP attributes**
+- Real-time **value suggestions**, based on previous call data
+- Support for advanced **template operators**:
+  - `template_equals`
+  - `template_contains`
+  - `template_regex_match`
+  - `template_boolean`
+
+Example logic:
+
+```
+IF idp_attributes.role == "doctor"
+AND protocol == "sip"
+THEN redirect to: meeting@hospital.example.com
+```
+
+### Available Response Modes
+
+| Mode | Description |
+|------|-------------|
+| **Continue** | Return standard policy response (optionally templated) |
+| **Reject** | Reject the call with a custom message |
+| **Redirect** | Send the caller to a new alias |
+
+---
+
+## 🔐 Identity Attributes (New)
+
+You may define **IdP attribute names** once, and they become:
+
+- Autocomplete suggestions in the **Logic Editor**
+- Accessible in **Jinja templates** via:  
+  `idp_attributes.<name>`
+
+Examples:
+
+| Name | Description |
+|------|-------------|
+| `role` | Access class (doctor / nurse / patient / admin) |
+| `location` | Facility / hospital site code |
+| `license_class` | Professional credential category |
+
+### Included in CSV Import/Export ✅
+Identity attributes now **persist across environments**.
+
+---
+
+## 🧪 Testing & Preview Tools
+
+| Tool | Description |
+|------|-------------|
+| **Single Condition Preview** | Test one field/operator/value pair with a real call |
+| **Full Logic Preview** | Show match result & final rendered response |
+| **Recent Call Samples** | Pick any logged call to preview logic against |
+
+These tools **do not affect production behavior** — they are safe for testing.
+
+---
+
+## 🗂 CSV Import / Export (Updated)
+
+The CSV includes:
+
+| Type | Included |
+|------|---------|
+| Rule metadata | ✅ |
+| Participant & Service logic enable state | ✅ |
+| Nested logic **conditions** (JSON) | ✅ |
+| Response templates (JSON) | ✅ |
+| **Identity Attributes list** | ✅ |
+
+This allows **full restore or migration between environments**.
+
+---
+
+## 📈 UI & Workflow Enhancements
 
 | Feature | Description |
-|----------|--------------|
-| **Drag-and-Drop Reordering** | Easily change rule priorities by dragging rows — instant persistence |
-| **Duplicate Detection** | Identifies overlapping regex patterns, with tooltips showing overlap examples |
-| **Usage Metrics** | Each rule tracks hit count and last-matched timestamp |
-| **CSV Import / Export** | Backup or bulk-edit all rules via a simple CSV |
-| **Rule Duplication** | One-click cloning of existing rules |
-| **Basic Auth Configurable per Rule** | Different upstream credentials per target |
-| **Override Responses** | Instantly return custom JSON for service or participant policies |
-| **Log Viewer** | Filter by rule, alias, and date — with syntax-highlighted JSON |
-| **Filter Memory & Live Search** | Filters persist across sessions for smooth UX |
-| **Sticky Table Columns** | “Grip” and “Actions” columns always visible — no horizontal scrolling |
+|---------|-------------|
+| Drag-and-Drop Rule Priority | Reorder instantly |
+| Rule Usage Metrics | Track match count & timestamp |
+| Duplicate Regex Detection | Highlights overlapping rule patterns |
+| Rich Log Viewer | Filter by rule, alias, protocol, host, date |
+| Syntax Highlighted JSON | Pretty-print request/response logs |
+| Rule Duplication | One-click copy |
 
 ---
 
-## Screenshots
+## 📦 Installation (Development)
 
-### Rules Dashboard  
-![Rules List](docs/screenshots/policy_router_list.png)
-
-### Edit Rule  
-![Rules Form](docs/screenshots/policy_router_form.png)
-
-### Logs Viewer  
-![Logs View](docs/screenshots/policy_router_filter_logs.png)
-
-### Export/import rules 
-![Logs View](docs/screenshots/policy_router_csv.png)
-
----
-
-##  Highlights
-
-### Rule-Based Routing
-- Rules evaluated by ascending priority
-- Match against `local_alias`, `protocol`, and `call_direction`
-- Optional JSON override instead of proxying upstream
-
-### Override Mode
-Define static responses for fast local handling:
-```json
-{ "status": "success", "action": "continue" }
-```
-Used for service and participant endpoints independently.
-
-### Secure Proxying
-- Supports per-rule **Basic Auth** to authenticate against remote policy servers  
-- Automatically strips hop-by-hop headers before forwarding
-
-### Logging
-- Every request/response is stored with:
-  - Rule matched
-  - Alias and parameters
-  - Upstream URL and response code
-  - Override flag
-- Web UI includes:
-  - Filter/search by alias, rule, or timeframe
-  - Syntax-highlighted JSON
-  - Pagination and export options
-
----
-
-## Installation for a dev environment
-
-### Requirements
-- **Python 3.11+**
-- **Django 5.0+**
-- **httpx**
-
-### Steps
 ```bash
 git clone https://github.com/your-org/pexip-policy-router.git
 cd pexip-policy-router
 
 python3 -m venv venv
-source venv/bin/activate   # macOS/Linux
-venv\Scripts\activate      # Windows
-
+source venv/bin/activate
 pip install -r requirements.txt
-python manage.py makemigrations policy_router
+
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver 0.0.0.0:8000
@@ -108,58 +141,39 @@ python manage.py runserver 0.0.0.0:8000
 
 ---
 
-## Usage
+## 🌐 Web UI
 
-### Web UI
-- Rules: [http://localhost:8000/rules/](http://localhost:8000/rules/)
-- Logs: [http://localhost:8000/logs/](http://localhost:8000/logs/)
+| Page | URL |
+|------|-----|
+| Rule List | `/rules/` |
+| Policy Logic Editor | `/policy-engine/<rule_id>/` |
+| Identity Attributes | `/identity-attributes/` |
+| Logs | `/logs/` |
+| CSV Import/Export | `/manage-rules/` |
 
-### Example Rule
-| Field | Example |
-|-------|----------|
-| Local Alias Regex | `^(sip:)?99\d+(@example.com)?` |
-| Service Policy Target | `https://webscheduler.example.com` |
-| Participant Policy Target | `https://webscheduler.example.com` |
-| Priority | `1` |
-| Basic Auth | `username` / `password` |
+---
 
-### Log Rotation
+## ✅ Running Tests
+
 ```bash
-python manage.py rotate_logs --days=30
+pytest -v
 ```
-*(Can be scheduled with cron or Celery Beat.)*
 
 ---
 
-## Deploy to Azure Web App (Linux)
+## 🚀 Deployment Notes
 
-See [DeployAzureWebApp.md](DeployAzureWebApp.md) for deployment notes.
+The application runs well under:
+- Docker
+- Kubernetes
+- Azure Web App (Linux)
+- Traditional VM / bare-metal with systemd
 
----
-
-## Authentication
-
-The app uses Django’s authentication system.  
-By default:
-- Web UI requires login (`ENABLE_WEB_AUTH = True`)
-- Policy endpoints can require Basic Auth (`ENABLE_POLICY_AUTH = True`)
-
-Configured in `settings.py`:
-```python
-ENABLE_WEB_AUTH = True        # Require login for web views
-ENABLE_POLICY_AUTH = True     # Require Basic Auth for /policy endpoints
-```
-
-Add the same credentials to your **Infinity External Policy Server** configuration.
+See `DeployAzureWebApp.md` for production deployment guidance.
 
 ---
 
-## Tests
+## License
 
-Run Tests fir rules:
-```python
-pytest -v policy_router/tests/test_participant_policy_matching.py
-pytest -v policy_router/tests/test_service_policy_matching.py
-pytest -v policy_router/tests/test_policy_integration.py
-```
-
+Commercial usage license customized per organization.  
+Contact your Pexip Solutions Architect.
