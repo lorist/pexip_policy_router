@@ -236,26 +236,48 @@ def export_rules_csv(request):
         "override_service_response",
         "always_continue_participant",
         "override_participant_response",
+
+        # Advanced logic fields
+        "participant_logic_enabled",
+        "participant_logic_conditions",
+        "participant_logic_response",
+        "service_logic_enabled",
+        "service_logic_conditions",
+        "service_logic_response",
     ])
 
+
     for rule in PolicyProxyRule.objects.all().order_by("priority"):
+        # Fetch logic objects (may not exist)
+        p_logic = PolicyLogic.objects.filter(rule=rule, rule_type="participant").first()
+        s_logic = PolicyLogic.objects.filter(rule=rule, rule_type="service").first()
+
         writer.writerow([
             smart_str(rule.name or ""),
             smart_str(rule.regex or ""),
             smart_str(rule.priority or ""),
             smart_str(rule.is_active),
-            json.dumps(rule.protocols or []),
-            json.dumps(rule.call_directions or []),
+            json.dumps(rule.protocols or [], ensure_ascii=False),
+            json.dumps(rule.call_directions or [], ensure_ascii=False),
             smart_str(rule.source_match or ""),
             smart_str(rule.service_target_url or ""),
             smart_str(rule.participant_target_url or ""),
             smart_str(rule.basic_auth_username or ""),
             smart_str(rule.basic_auth_password or ""),
             smart_str(rule.always_continue_service),
-            json.dumps(rule.override_service_response or {}),
+            json.dumps(rule.override_service_response or {}, ensure_ascii=False),
             smart_str(rule.always_continue_participant),
-            json.dumps(rule.override_participant_response or {}),
+            json.dumps(rule.override_participant_response or {}, ensure_ascii=False),
+
+            # Advanced logic export
+            smart_str(p_logic.enabled if p_logic else ""),
+            json.dumps(p_logic.conditions if p_logic else {}, ensure_ascii=False),
+            json.dumps(p_logic.response if p_logic else {}, ensure_ascii=False),
+            smart_str(s_logic.enabled if s_logic else ""),
+            json.dumps(s_logic.conditions if s_logic else {}, ensure_ascii=False),
+            json.dumps(s_logic.response if s_logic else {}, ensure_ascii=False),
         ])
+
 
     return response
 
@@ -314,6 +336,24 @@ def import_rules_csv(request):
                 call_dirs = parse_json(row.get("call_directions"), [])
                 override_service = parse_json(row.get("override_service_response"), {})
                 override_part = parse_json(row.get("override_participant_response"), {})
+                # advanced logic fields
+                p_logic_enabled_raw = row.get("participant_logic_enabled", "").strip()
+                p_logic_enabled = p_logic_enabled_raw.lower() in ("true","1","yes")
+
+                p_logic_conditions_raw = row.get("participant_logic_conditions", "").strip()
+                p_logic_conditions = parse_json(p_logic_conditions_raw, {}) if p_logic_conditions_raw else {}
+
+                p_logic_response_raw = row.get("participant_logic_response", "").strip()
+                p_logic_response = parse_json(p_logic_response_raw, {}) if p_logic_response_raw else {}
+
+                s_logic_enabled_raw = row.get("service_logic_enabled", "").strip()
+                s_logic_enabled = s_logic_enabled_raw.lower() in ("true","1","yes")
+
+                s_logic_conditions_raw = row.get("service_logic_conditions", "").strip()
+                s_logic_conditions = parse_json(s_logic_conditions_raw, {}) if s_logic_conditions_raw else {}
+
+                s_logic_response_raw = row.get("service_logic_response", "").strip()
+                s_logic_response = parse_json(s_logic_response_raw, {}) if s_logic_response_raw else {}
 
                 defaults = {
                     "regex": regex,
@@ -333,10 +373,53 @@ def import_rules_csv(request):
                 }
 
                 obj, created_flag = PolicyProxyRule.objects.update_or_create(name=name, defaults=defaults)
+
+                # ------------------------------------------------
+                # Restore Participant Logic (only if provided)
+                # ------------------------------------------------
+                if p_logic_enabled or p_logic_conditions or p_logic_response:
+                    PolicyLogic.objects.update_or_create(
+                        rule=obj,
+                        rule_type="participant",
+                        defaults={
+                            "enabled": p_logic_enabled,
+                            "conditions": p_logic_conditions,
+                            "response": p_logic_response,
+                        }
+                    )
+
+                # ------------------------------------------------
+                # Restore Service Logic (only if provided)
+                # ------------------------------------------------
+                if s_logic_enabled or s_logic_conditions or s_logic_response:
+                    PolicyLogic.objects.update_or_create(
+                        rule=obj,
+                        rule_type="service",
+                        defaults={
+                            "enabled": s_logic_enabled,
+                            "conditions": s_logic_conditions,
+                            "response": s_logic_response,
+                        }
+                    )
+
+                # ------------------------------------------------
+                # ENABLE ADVANCED LOGIC MODE on the rule if logic exists
+                # ------------------------------------------------
+                if (p_logic_enabled or p_logic_conditions or p_logic_response or
+                    s_logic_enabled or s_logic_conditions or s_logic_response):
+                    if not obj.advanced_logic_enabled:
+                        obj.advanced_logic_enabled = True
+                        obj.save(update_fields=["advanced_logic_enabled"])
+
+                # ------------------------------------------------
+                # Update counters AFTER rule + logic save
+                # ------------------------------------------------
                 if created_flag:
                     created += 1
                 else:
                     updated += 1
+
+
             except Exception as e:
                 failed += 1
                 logger.exception(f"Row {i} import failed: {e}")
