@@ -1,0 +1,47 @@
+{% extends "policy_router/base.html" %}
+{% block title %}Identity Attribute Configuration{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-3">Identity Attribute Configuration</h2>
+  <p class="text-muted">
+    These attributes become available in the Advanced Logic <strong>Condition Builder</strong>
+    and <strong>Jinja templating</strong>.
+    <br>Enter only the attribute name (e.g., <code>title</code> → becomes <code>idp_attributes.title</code>).
+  </p>
+
+  <form method="post" class="mb-4 card card-body bg-light">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary">Add Attribute</button>
+  </form>
+
+  <table class="table table-striped align-middle">
+    <thead>
+      <tr>
+        <th>Attribute Name</th>
+        <th>Description</th>
+        <th style="width: 120px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for attr in attributes %}
+      <tr>
+        <td><code>idp_attributes.{{ attr.name }}</code></td>
+        <td>{{ attr.description }}</td>
+        <td>
+          <form method="post" action="{% url 'policy_engine:identity_attribute_delete' attr.id %}">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="3" class="text-center text-muted py-4">No attributes configured yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

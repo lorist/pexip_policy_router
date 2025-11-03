@@ -1,8 +1,10 @@
 from django.contrib import admin
-from .models import PolicyLogic
+from .models import PolicyLogic, IdentityAttribute
 from django.utils.html import format_html
 from django.urls import reverse
 
+
+admin.site.register(IdentityAttribute)
 
 @admin.register(PolicyLogic)
 class PolicyLogicAdmin(admin.ModelAdmin):
