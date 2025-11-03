@@ -264,6 +264,45 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
         }
+        // Per-condition Preview
+        if (btn.classList.contains("preview-condition")) {
+            const row = btn.closest(".condition-row");
+            const field = row.querySelector(".condition-field")?.value || "";
+            const operator = row.querySelector(".condition-operator")?.value || "equals";
+            const value = row.querySelector(".condition-value")?.value || "";
+
+            const form = btn.closest("form");
+            const type = form.querySelector("input[name='logic_type']").value;
+            let callInfo = {};
+
+            try {
+                callInfo = JSON.parse(document.getElementById(`${type}-call-info`).value || "{}");
+            } catch {
+                alert("⚠️ Invalid JSON in Test Call Info");
+                return;
+            }
+
+            const ruleId = document.getElementById("rule-id").value;
+
+            fetch(`/policy-engine/${ruleId}/condition-preview/`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": document.querySelector("[name='csrfmiddlewaretoken']").value
+                },
+                body: JSON.stringify({ field, operator, value, call_info: callInfo })
+            })
+            .then(r => r.json())
+            .then(res => {
+                row.querySelectorAll(".cond-preview-chip").forEach(el => el.remove());
+                const chip = document.createElement("span");
+                chip.className = `cond-preview-chip badge ${res.matched ? "bg-success" : "bg-danger"}`;
+                chip.style.marginLeft = "8px";
+                chip.textContent = res.matched ? "matched" : "no match";
+                btn.insertAdjacentElement("afterend", chip);
+            });
+        }
+
     });
 
     // ---------------------------

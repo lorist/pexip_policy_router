@@ -8,7 +8,7 @@ from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PART
 from policy_router.models import PolicyProxyRule, PolicyRequestLog
 from .models import PolicyLogic, IdentityAttribute
 from .forms import PolicyLogicForm
-from .utils import evaluate_conditions, apply_template, normalize_policy_response
+from .utils import evaluate_conditions, apply_template, normalize_policy_response, evaluate_single_condition, get_nested
 from django.utils.safestring import mark_safe
 
 
@@ -337,4 +337,35 @@ def logic_preview(request, rule_id):
         "matched": match["matched"],
         "rendered_response": rendered,
         "explanation": explanation,
+    }, status=200)
+
+@require_POST
+@csrf_exempt
+def condition_preview(request, rule_id):
+    """
+    Preview a SINGLE condition row against Test Call Info.
+    """
+    try:
+        data = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    field = data.get("field")
+    operator = data.get("operator")
+    value = data.get("value")
+    call_info = data.get("call_info") or {}
+
+    if not field or not operator:
+        return JsonResponse({"error": "Missing field or operator"}, status=400)
+
+    actual = get_nested(call_info, field)
+
+    matched = evaluate_single_condition(actual, operator, value, call_info)
+
+    return JsonResponse({
+        "matched": bool(matched),
+        "field": field,
+        "operator": operator,
+        "value": value,
+        "actual": actual,
     }, status=200)

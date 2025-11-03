@@ -11,5 +11,7 @@ urlpatterns = [
     path("test-signal/", views.test_signal, name="test_signal"),
     path("identity-attributes/", identity_attribute_list, name="identity_attribute_list"),
     path("identity-attributes/<int:pk>/delete/", identity_attribute_delete, name="identity_attribute_delete"),
+    path("<int:rule_id>/condition-preview/", views.condition_preview, name="condition_preview"),
+
 ]
 
