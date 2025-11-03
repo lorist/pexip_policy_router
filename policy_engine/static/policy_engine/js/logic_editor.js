@@ -3,8 +3,17 @@
 // response builders, recent-call loader, and Jinja var/filter autocomplete.
 
 import { waitForSchemas } from "./utils.js";
-import { renderGroupFromJSON, syncJSON, buildConditionRow, buildGroup } from "./builder_conditions.js";
+import {
+    renderGroupFromJSON,
+    syncJSON,
+    buildConditionRow,
+    buildGroup,
+    buildOperatorSelect
+} from "./builder_conditions.js";
 import { initResponseBuilder } from "./builder_response.js";
+
+// Make operator builder available globally for dynamic refresh
+window.buildOperatorSelect = buildOperatorSelect;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Boot
@@ -54,6 +63,11 @@ document.addEventListener("DOMContentLoaded", () => {
         link.addEventListener("click", () => {
             const isService = link.href.includes("tab=service");
             setSuggestSources(isService ? "service" : "participant");
+
+            // ✅ Update condition schema reference on tab change
+            window.CURRENT_CONDITION_SCHEMA = isService
+                ? window.SERVICE_CONDITION_SCHEMA
+                : window.PARTICIPANT_CONDITION_SCHEMA;
         });
     });
 
@@ -136,6 +150,61 @@ document.addEventListener("DOMContentLoaded", () => {
 
         console.log("✅ UI restored and builders initialized");
     });
+
+    // Register schemas globally so change-handler can access the correct types
+    window.PARTICIPANT_CONDITION_SCHEMA = safeParseJSONFromTag("participant_condition_schema_json", { fields: [] });
+    window.SERVICE_CONDITION_SCHEMA = safeParseJSONFromTag("service_condition_schema_json", { fields: [] });
+
+    // Set current schema (default tab)
+    window.CURRENT_CONDITION_SCHEMA = (activeTab === "service")
+        ? window.SERVICE_CONDITION_SCHEMA
+        : window.PARTICIPANT_CONDITION_SCHEMA;
+
+    // Dynamically refresh operator + value input when field changes
+    document.body.addEventListener("change", (event) => {
+        if (!event.target.classList.contains("condition-field")) return;
+
+        const row = event.target.closest(".condition-row");
+        if (!row) return;
+
+        const field = event.target.value;
+        const schema = window.CURRENT_CONDITION_SCHEMA || { fields: [] };
+        const schemaFields = schema.fields || [];
+
+        // Determine type (schema or idp_attributes.* override to string)
+        const effectiveType = field.startsWith("idp_attributes.")
+            ? "string"
+            : (schemaFields.find(f => f.name === field)?.type || "string");
+
+        // --- Rebuild Operator Select ---
+        const operatorSelectEl = row.querySelector(".condition-operator");
+        const currentOperator = operatorSelectEl.value;
+
+        const newOperator = window.buildOperatorSelect(field, schemaFields, currentOperator);
+        operatorSelectEl.insertAdjacentHTML("afterend", newOperator);
+        operatorSelectEl.remove();
+
+
+        // --- Rebuild Value Input ---
+        const valueEl = row.querySelector(".condition-value");
+        const currentValue = valueEl.value;
+        let newValueHTML = "";
+
+        if (effectiveType === "bool") {
+            newValueHTML = `
+                <select class="form-select form-select-sm condition-value">
+                    <option value="true" ${currentValue === "true" ? "selected" : ""}>true</option>
+                    <option value="false" ${currentValue === "false" ? "selected" : ""}>false</option>
+                </select>`;
+        } else if (effectiveType === "number") {
+            newValueHTML = `<input type="number" class="form-control form-control-sm condition-value" value="${currentValue}">`;
+        } else {
+            newValueHTML = `<input type="text" class="form-control form-control-sm condition-value" value="${currentValue}">`;
+        }
+
+        valueEl.outerHTML = newValueHTML;
+    });
+
 
     // ---------------------------
     // Preview + Call Info Loader (both tabs)
