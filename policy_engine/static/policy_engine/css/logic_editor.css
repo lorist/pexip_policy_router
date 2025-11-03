@@ -1,0 +1,123 @@
+/* Logic Editor & Response Builder Styling */
+
+.nested-list {
+    background-color: #f9fafb;
+    border-left: 4px solid #0d6efd;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+}
+
+.nested-list>.d-flex strong {
+    font-size: 0.95rem;
+    color: #0d6efd;
+}
+
+.nested-item {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.nested-item h6 {
+    font-size: 0.9rem;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.nested-item .form-label {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.response-field {
+    margin-bottom: 0.75rem;
+}
+
+.response-field label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+button.add-list-item,
+button.remove-list-item {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.4rem;
+}
+
+button.add-list-item {
+    color: #0d6efd;
+}
+
+button.remove-list-item {
+    color: #dc3545;
+}
+
+button.remove-list-item:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* Collapsible participant cards */
+.nested-item.collapsed>.nested-body {
+    display: none;
+}
+
+.nested-item-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.nested-item-header:hover {
+    background-color: #f1f3f5;
+}
+
+.nested-item-header .chevron {
+    transition: transform 0.2s ease;
+}
+
+.nested-item.collapsed .chevron {
+    transform: rotate(-90deg);
+}
+
+.autocomplete-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    z-index: 9999;
+    padding: 6px;
+    font-size: 13px;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.autocomplete-menu div {
+    padding: 4px 6px;
+    cursor: pointer;
+}
+
+.autocomplete-menu div:hover {
+    background: #efefef;
+}
+.ac-item {
+    padding: 3px 6px;
+    cursor: pointer;
+}
+
+.ac-item:hover {
+    background: #eef;
+}
+
+.collapsible-help summary {
+    cursor: pointer;
+}
+
+.collapsible-help summary:hover {
+    text-decoration: underline;
+}

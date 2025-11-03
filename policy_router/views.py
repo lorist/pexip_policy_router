@@ -28,6 +28,8 @@ from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.encoding import smart_str
 from django.db import transaction
+from policy_router.engine import evaluate_policy
+
 
 # Setup console logging
 logger = logging.getLogger(__name__)
@@ -171,7 +173,10 @@ def _log_request(
     except Exception:
         logger.exception(f"Logging failed for rule {rule.id}: {rule.name}")
 
-
+def index(request):
+    if request.user.is_authenticated:
+        return redirect("policy_router:rule_list")
+    return render(request, "policy_router/index.html")
 
 @maybe_protected
 @require_http_methods(["GET"])
@@ -504,9 +509,11 @@ def proxy_service_policy(request):
                 service_logic = PolicyLogic.objects.get(rule=rule, rule_type="service", enabled=True)
                 match = evaluate_conditions(service_logic.conditions, call_info)
                 if match["matched"]:
-                    response_json = service_logic.response or {"action": "continue"}
+                    # Apply Jinja policy engine
+                    response_json = evaluate_policy(service_logic, call_info)
                     _log_request(rule, request, matched_logic=True, logic_response=response_json)
-                    return finalize_response(response_json, call_info)
+                    return JsonResponse(response_json, status=200)
+
             except PolicyLogic.DoesNotExist:
                 pass
 
@@ -515,9 +522,10 @@ def proxy_service_policy(request):
                 participant_logic = PolicyLogic.objects.get(rule=rule, rule_type="participant", enabled=True)
                 match = evaluate_conditions(participant_logic.conditions, call_info)
                 if match["matched"]:
-                    response_json = participant_logic.response or {"action": "continue"}
-                    _log_request(rule, request, None, matched_logic=True, logic_response=response_json)
-                    return finalize_response(response_json, call_info)
+                    response_json = evaluate_policy(participant_logic, call_info)
+                    _log_request(rule, request, matched_logic=True, logic_response=response_json)
+                    return JsonResponse(response_json, status=200)
+
             except PolicyLogic.DoesNotExist:
                 pass
 
