@@ -107,6 +107,7 @@
   </style>
 </head>
 <body>
+  {% if request.user.is_authenticated %}
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg bg-body-tertiary fixed-top border-bottom">
     <div class="container-fluid">
@@ -139,36 +140,26 @@
 
         <!-- Right-aligned items -->
         <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-          {% if settings.ENABLE_WEB_AUTH %}
-            {% if request.user.is_authenticated %}
-              <li class="nav-item d-flex align-items-center">
-                <span class="nav-link disabled text-secondary">
-                  <i class="bi bi-person-circle me-1"></i>
-                  Welcome, {{ request.user.username }}
-                </span>
-              </li>
-              <li class="nav-item">
-                <form action="{% url 'logout' %}" method="post" class="d-inline">
-                  {% csrf_token %}
-                  <button
-                    type="submit"
-                    class="nav-link btn btn-link p-0 ms-2 align-baseline"
-                    style="text-decoration: none;"
-                  >
-                    <i class="bi bi-box-arrow-right"></i> Logout
-                  </button>
-                </form>
-              </li>
-            {% else %}
-              <li class="nav-item">
-                <a class="nav-link" href="{% url 'login' %}?next={{ request.path }}">
-                  <i class="bi bi-box-arrow-in-right"></i> Login
-                </a>
-              </li>
-            {% endif %}
-          {% endif %}
+          <li class="nav-item d-flex align-items-center">
+            <span class="nav-link disabled text-secondary">
+              <i class="bi bi-person-circle me-1"></i>
+              Welcome, {{ request.user.username }}
+            </span>
+          </li>
+          <li class="nav-item">
+            <form action="{% url 'policy_router:logout' %}" method="post" class="d-inline">
+              {% csrf_token %}
+              <button
+                type="submit"
+                class="nav-link btn btn-link p-0 ms-2 align-baseline"
+                style="text-decoration: none;"
+              >
+                <i class="bi bi-box-arrow-right"></i> Logout
+              </button>
+            </form>
+          </li>
 
-          <!-- Theme toggle button -->
+          <!-- Theme toggle -->
           <li class="nav-item">
             <button id="theme-toggle" class="btn btn-outline-secondary btn-sm ms-3" title="Toggle light/dark mode">
               <i id="theme-icon" class="bi bi-moon-fill"></i>
@@ -178,6 +169,8 @@
       </div>
     </div>
   </nav>
+  {% endif %}
+
 
   <div class="container">
     {% block content %}{% endblock %}

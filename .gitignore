@@ -23,8 +23,8 @@ ENV/
 *.pyc
 db.sqlite3
 media/
-staticfiles/
-static/
+#staticfiles/
+#static/
 .local_settings.py
 
 # Django Migrations (ignore pyc but keep migrations for versioning)
