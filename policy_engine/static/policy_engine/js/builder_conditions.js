@@ -94,7 +94,7 @@ export function buildOperatorSelect(field, schemaFields, selected = "equals") {
     return `
     <select class="form-select form-select-sm condition-operator">
         ${ops.map(o =>
-            `<option value="${o}" ${o === selected ? "selected" : ""}>
+            `<option value="${o}" title="${OPERATOR_LABELS[o] || o}">
                 ${OPERATOR_LABELS[o] || o}
             </option>`
         ).join("")}

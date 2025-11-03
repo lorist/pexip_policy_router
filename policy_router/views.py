@@ -22,7 +22,7 @@ from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
-from policy_engine.models import PolicyLogic
+from policy_engine.models import PolicyLogic, IdentityAttribute
 from policy_engine.utils import evaluate_conditions, apply_template, normalize_policy_response
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
@@ -244,6 +244,7 @@ def export_rules_csv(request):
         "service_logic_enabled",
         "service_logic_conditions",
         "service_logic_response",
+        "idp_attributes"
     ])
 
 
@@ -276,6 +277,7 @@ def export_rules_csv(request):
             smart_str(s_logic.enabled if s_logic else ""),
             json.dumps(s_logic.conditions if s_logic else {}, ensure_ascii=False),
             json.dumps(s_logic.response if s_logic else {}, ensure_ascii=False),
+            json.dumps(list(IdentityAttribute.objects.values_list("name", flat=True)), ensure_ascii=False)
         ])
 
 
@@ -284,6 +286,34 @@ def export_rules_csv(request):
 # -----------------------------
 # CSV IMPORT
 # -----------------------------
+from policy_engine.models import IdentityAttribute
+
+def ensure_idp_attrs_exist(conditions):
+    """
+    Scan conditions JSON tree and create IdentityAttribute entries
+    for any field like idp_attributes.<name>
+    """
+    if not isinstance(conditions, dict):
+        return
+
+    def walk(node):
+        if isinstance(node, dict):
+            # direct simple rule case
+            field = node.get("field")
+            if isinstance(field, str) and field.startswith("idp_attributes."):
+                attr = field.split(".", 1)[1]
+                IdentityAttribute.objects.get_or_create(name=attr)
+
+            # nested groups
+            for value in node.values():
+                walk(value)
+
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(conditions)
+
 @csrf_exempt
 @maybe_protected
 @require_http_methods(["POST"])
@@ -345,6 +375,7 @@ def import_rules_csv(request):
 
                 p_logic_response_raw = row.get("participant_logic_response", "").strip()
                 p_logic_response = parse_json(p_logic_response_raw, {}) if p_logic_response_raw else {}
+                ensure_idp_attrs_exist(p_logic_conditions)
 
                 s_logic_enabled_raw = row.get("service_logic_enabled", "").strip()
                 s_logic_enabled = s_logic_enabled_raw.lower() in ("true","1","yes")
@@ -354,7 +385,16 @@ def import_rules_csv(request):
 
                 s_logic_response_raw = row.get("service_logic_response", "").strip()
                 s_logic_response = parse_json(s_logic_response_raw, {}) if s_logic_response_raw else {}
-
+                ensure_idp_attrs_exist(s_logic_conditions)
+                # ✅ Load idp_attributes list from CSV
+                idp_attrs_raw = row.get("idp_attributes", "").strip()
+                idp_attrs = parse_json(idp_attrs_raw, [])
+                if isinstance(idp_attrs, list):
+                   for attr in idp_attrs:
+                       attr = str(attr).strip()
+                       if attr:
+                           IdentityAttribute.objects.get_or_create(name=attr)
+                           
                 defaults = {
                     "regex": regex,
                     "priority": int(row.get("priority", 0) or 0),

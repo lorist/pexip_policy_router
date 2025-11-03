@@ -137,19 +137,37 @@
       </div>
 
       <!-- Conditions -->
-      <h6 class="mt-4 mb-1">Conditions</h6>
+      <h6 class="mt-4 mb-1 d-flex align-items-center">
+        Conditions
+        <i class="bi bi-question-circle ms-1 text-muted"
+          data-bs-toggle="tooltip"
+          title="Conditions define WHEN this logic applies. You can compare call info fields or user identity attributes."></i>
+      </h6>
+
       <div id="participant-conditions"></div>
       <input type="hidden" name="participant_conditions">
 
       <!-- Response Builder -->
       <div class="participant-response-block" {% if participant_mode != "allow" %}style="display:none" {% endif %}>
-        <h6 class="mt-4 mb-1">Response</h6>
+        <h6 class="mt-4 mb-1 d-flex align-items-center">
+          Response
+          <i class="bi bi-question-circle ms-1 text-muted"
+            data-bs-toggle="tooltip"
+            title="When allowed, this defines how the participant or service is modified. You can use Jinja variables like {{ remote_display_name }}."></i>
+        </h6>
+
         <div id="participant-response-builder"></div>
         <input type="hidden" name="participant_response_json">
       </div>
 
       <!-- Test Block -->
-      <label class="form-label mt-3 small">Test Call Info</label>
+      <label class="form-label mt-3 small d-flex align-items-center">
+        Test Call Info
+        <i class="bi bi-question-circle ms-1 text-muted"
+          data-bs-toggle="tooltip"
+          title="Paste real call_info from logs here to test your conditions and response behavior."></i>
+      </label>
+
       <textarea id="participant-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
 
       <div class="mt-3 text-end">
@@ -205,10 +223,20 @@
       </div>
 
       {{ service_form.description }}
+      <!-- Conditions -->
+      <h6 class="mt-4 mb-1">Conditions</h6>
+      <div id="service-conditions"></div>
+      <input type="hidden" name="service_conditions">
 
       <!-- Action -->
       <div class="mt-3">
-        <label class="form-label fw-semibold">Action</label>
+        <label class="form-label fw-semibold d-flex align-items-center">
+          Action
+          <i class="bi bi-question-circle ms-1 text-muted"
+            data-bs-toggle="tooltip"
+            title="Choose what happens if the conditions match: Allow (maybe modify behavior), Reject (block call), or Redirect (send user to another service)."></i>
+        </label>
+
         <select name="service_action" class="form-select form-select-sm action-selector" data-type="service">
           <option value="allow" {% if service_mode == "allow" %}selected{% endif %}>✅ Allow / Continue</option>
           <option value="reject" {% if service_mode == "reject" %}selected{% endif %}>⛔ Reject</option>
@@ -230,12 +258,24 @@
 
       <!-- Response Builder -->
       <div class="service-response-block" {% if service_mode != "allow" %}style="display:none" {% endif %}>
-        <h6 class="mt-4 mb-1">Service Configuration (Result)</h6>
+        <h6 class="mt-4 mb-1 d-flex align-items-center">
+          Service Configuration(result)
+          <i class="bi bi-question-circle ms-1 text-muted"
+            data-bs-toggle="tooltip"
+            title="When allowed, this defines how the participant or service is modified. You can use Jinja variables like {{ remote_display_name }}."></i>
+        </h6>
+
         <div id="service-response-builder"></div>
         <input type="hidden" name="service_response_json">
       </div>
 
-      <label class="form-label mt-3 small">Test Call Info</label>
+      <label class="form-label mt-3 small d-flex align-items-center">
+        Test Call Info
+        <i class="bi bi-question-circle ms-1 text-muted"
+          data-bs-toggle="tooltip"
+          title="Paste real call_info from logs here to test your conditions and response behavior."></i>
+      </label>
+
       <textarea id="service-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
 
       <div class="mt-3 text-end">
@@ -286,7 +326,14 @@
   window.SERVICE_FIELD_VALUES = {{ service_field_values | safe }};
   window.call_info_example_values = {{ call_info_example_values | safe }};
 </script>
-
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+  tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+  })
+})
+</script>
 <script type="module" src="{% static 'policy_engine/js/logic_editor.js' %}"></script>
 <link rel="stylesheet" href="{% static 'policy_engine/css/logic_editor.css' %}">
 {% endblock %}
