@@ -23,5 +23,3 @@ DATABASES = {
 }
 
 ENABLE_POLICY_AUTH = False     # Disable Basic Auth for policy endpoints
-
-STATIC_ROOT = "./awa-static/" # Declare static file location when deployed to Azure
