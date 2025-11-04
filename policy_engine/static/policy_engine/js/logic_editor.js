@@ -627,3 +627,106 @@ document.addEventListener("input", function (e) {
     document.querySelector(`.${type}-reject-block`).style.display = (mode === "reject") ? "" : "none";
     document.querySelector(`.${type}-redirect-block`).style.display = (mode === "redirect") ? "" : "none";
 });
+
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = new bootstrap.Modal(document.getElementById("recentCallModal"));
+  const list = document.getElementById("recent-call-list");
+  const search = document.getElementById("recent-call-search");
+
+  let itemsCache = [];
+  let currentType = null; // <--- TRACK WHICH TAB WE’RE APPLYING TO
+
+  document.querySelectorAll(".load-recent-call-info").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      currentType = btn.dataset.type; // "participant" or "service"
+
+      try {
+        const res = await fetch("/policy-engine/recent-call-info/");
+        const { items } = await res.json();
+
+        if (!items || !items.length) {
+          alert("No recent calls found.");
+          return;
+        }
+
+        itemsCache = items;
+        search.value = "";
+        renderList(itemsCache);
+
+        modal.show();
+
+      } catch (err) {
+        console.error(err);
+        alert("Error loading call info — check logs.");
+      }
+    });
+  });
+
+
+  function renderList(data) {
+    list.innerHTML = data.map((ci, i) => {
+      const call = ci || {};
+
+      const who =
+        call.remote_display_name ||
+        call.remote_alias ||
+        call.participant_uuid ||
+        "Unknown";
+
+      const service =
+        call.unique_service_name ||
+        call.service_name ||
+        call.service_tag ||
+        "";
+
+      const proto = call.protocol || "";
+      const loc = call.location || call.system_location_name || "";
+      const dir = call.call_direction || "";
+
+      const tooltip = JSON.stringify(ci, null, 2)
+        .replace(/"/g, '&quot;')
+        .replace(/\n/g, '&#10;');
+
+      return `
+        <li class="list-group-item list-group-item-action recent-call-item py-2"
+            data-index="${i}"
+            title="${tooltip}">
+          <div class="small">
+            <strong>${who}</strong>
+            ${service ? `<span class="text-muted"> · ${service}</span>` : ""}
+            <div class="text-muted small">
+              ${proto ? `protocol: ${proto}` : ""}
+              ${loc ? ` · location: ${loc}` : ""}
+              ${dir ? ` · direction: ${dir}` : ""}
+            </div>
+          </div>
+        </li>
+      `;
+    }).join("");
+
+    // Click → Insert JSON
+    list.querySelectorAll(".recent-call-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        const textarea = document.getElementById(`${currentType}-call-info`);
+        if (!textarea) return;
+        textarea.value = JSON.stringify(itemsCache[el.dataset.index], null, 2);
+        modal.hide();
+      });
+    });
+
+    // Tooltip activate
+    list.querySelectorAll('[title]').forEach(el => {
+      new bootstrap.Tooltip(el);
+    });
+  }
+
+
+  // Live search filter
+  search.addEventListener("input", () => {
+    const q = search.value.toLowerCase();
+    const filtered = itemsCache.filter(ci =>
+      JSON.stringify(ci).toLowerCase().includes(q)
+    );
+    renderList(filtered);
+  });
+});

@@ -4,15 +4,35 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods, require_POST
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
+from django.db.models.functions import Cast
+from django.db.models import JSONField
 from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PARTICIPANT_RESPONSE_SCHEMA, SERVICE_RESPONSE_SCHEMA
 from policy_router.models import PolicyProxyRule, PolicyRequestLog
 from .models import PolicyLogic, IdentityAttribute
 from .forms import PolicyLogicForm
 from .utils import evaluate_conditions, apply_template, normalize_policy_response, evaluate_single_condition, get_nested
 from django.utils.safestring import mark_safe
-
+from policy_router.views import maybe_protected
 
 logger = logging.getLogger("policy_engine.views")
+
+@maybe_protected
+def recent_call_info(request):
+    logs = (
+        PolicyRequestLog.objects
+        .exclude(request_params__isnull=True)
+        .order_by("-created_at")[:10]
+    )
+
+    items = []
+    for log in logs:
+        # request_params is already dict-like
+        params = log.request_params or {}
+        # normalize lists -> scalar values
+        clean = {k: v[0] if isinstance(v, list) and v else v for k, v in params.items()}
+        items.append(clean)
+
+    return JsonResponse({"items": items})
 
 # can probably get rid of this and the url when dev is finished
 from django.views.decorators.csrf import csrf_exempt

@@ -276,15 +276,62 @@
           title="Paste real call_info from logs here to test your conditions and response behavior."></i>
       </label>
 
-      <textarea id="service-call-info" class="form-control font-monospace small" rows="4">{}</textarea>
+      <textarea id="service-call-info"
+                name="service_call_info"
+                class="form-control font-monospace small"
+                rows="4">{{ service_call_info|default:"{}" }}</textarea>
 
-      <div class="mt-3 text-end">
-        <button type="button" class="btn btn-outline-info btn-sm preview-logic" data-type="service">🔍 Preview</button>
-        <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
+      <div class="mt-3 d-flex justify-content-between">
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm load-recent-call-info"
+                data-type="service">
+          📄 Load Recent Call
+        </button>
+
+        <div class="text-end">
+          <button type="button"
+                  class="btn btn-outline-info btn-sm preview-logic"
+                  data-type="service">🔍 Preview</button>
+          <button type="submit"
+                  class="btn btn-primary btn-sm">💾 Save</button>
+        </div>
       </div>
+
 
       <pre id="service-preview-result" class="alert alert-secondary small mt-3" style="display:none;"></pre>
     </form>
+  </div>
+</div>
+<!-- Recent Call Picker Modal -->
+<div class="modal fade" id="recentCallModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Recent Calls</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="input-group input-group-sm mb-3">
+          <span class="input-group-text">🔍</span>
+          <input type="text"
+                 class="form-control"
+                 id="recent-call-search"
+                 placeholder="Search call info… e.g., 'dennis', 'sip', 'meet'">
+        </div>
+
+        <ul id="recent-call-list" class="list-group small"></ul>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
+
+    </div>
   </div>
 </div>
 
