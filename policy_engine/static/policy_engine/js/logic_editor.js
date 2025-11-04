@@ -101,9 +101,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 if (btn.classList.contains("add-condition")) {
                     list.insertAdjacentHTML("beforeend", buildConditionRow(schema, "", "equals", ""));
+                    enhanceConditionFieldSelects(restored);
                 }
                 if (btn.classList.contains("add-group")) {
                     list.insertAdjacentHTML("beforeend", buildGroup());
+                    enhanceConditionFieldSelects(restored);
                 }
                 if (btn.classList.contains("remove-condition")) {
                     btn.closest(".condition-row")?.remove();
@@ -154,6 +156,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
         console.log(" UI restored and builders initialized");
+        // Make condition field dropdown searchable
+        function enhanceConditionFieldSelects(root=document) {
+            root.querySelectorAll(".condition-field").forEach(el => {
+                if (el.dataset.tomselect) return; // prevent double init
+                el.dataset.tomselect = "1";
+                new TomSelect(el, {
+                    allowEmptyOption: true,
+                    create: false,
+                    maxOptions: 500,
+                    sortField: { field: "text", direction: "asc" },
+                    placeholder: "Search field…"
+                });
+            });
+        }
+        enhanceConditionFieldSelects(document);
+
     });
 
     // Register schemas globally so change-handler can access the correct types
