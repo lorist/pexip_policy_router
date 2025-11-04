@@ -56,33 +56,45 @@ def logic_editor(request, rule_id):
     # Normalize response builder JSON (unchanged)
     # -------------------------------------------------------
     def _normalize_builder_payload(raw_json: str | None) -> dict:
+        """
+        Ensure the response builder JSON is wrapped into
+        {status, action, result: {...}} without discarding list or dict fields.
+        """
         try:
             parsed = json.loads((raw_json or "").strip() or "{}")
         except Exception:
             parsed = {}
 
-        if not isinstance(parsed, dict):
-            parsed = {}
+        # If already normalized, return as-is
+        if isinstance(parsed, dict) and "status" in parsed and "action" in parsed:
+            return parsed
 
-        result = parsed.get("result")
-        result = result if isinstance(result, dict) else {}
+        # NEW: Accept either {result:{...}} or just { ... }
+        if isinstance(parsed, dict) and "result" in parsed and isinstance(parsed["result"], dict):
+            result = parsed["result"]
+        else:
+            result = parsed if isinstance(parsed, dict) else {}
 
-        for k, v in list(parsed.items()):
-            if k not in ("status", "action", "result"):
-                result[k] = v
+        return {
+            "status": "success",
+            "action": "continue",
+            "result": result,
+        }
 
-        return {"status": "success", "action": "continue", "result": result}
 
     # -------------------------------------------------------
     # Save POST changes
     # -------------------------------------------------------
     if request.method == "POST":
-        logic_type = request.POST.get("logic_type")  # participant or service
+        logic_type = request.POST.get("logic_type")  # "participant" or "service"
         logic = participant_logic if logic_type == "participant" else service_logic
         form = participant_form if logic_type == "participant" else service_form
         chosen_action = request.POST.get(f"{logic_type}_action", "allow")
 
         if form.is_valid():
+            # -------------------------------
+            # Conditions
+            # -------------------------------
             raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip()
             logic.conditions = json.loads(raw_conditions or '{"combiner": "all", "rules": []}')
             logic.enabled = form.cleaned_data["enabled"]
@@ -90,16 +102,48 @@ def logic_editor(request, rule_id):
 
             reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
 
+            # -------------------------------
+            # Reject
+            # -------------------------------
             if chosen_action == "reject":
                 logic.reject_reason = reject_reason
-                logic.response = {"status": "success", "action": "reject", "result": {"reject_reason": reject_reason or "Call rejected"}}
+                logic.response = {
+                    "status": "success",
+                    "action": "reject",
+                    "result": {"reject_reason": reject_reason or "Call rejected"}
+                }
+
+            # -------------------------------
+            # Redirect
+            # -------------------------------
             elif chosen_action == "redirect":
                 new_alias = request.POST.get("service_new_alias", "").strip()
-                logic.response = {"status": "success", "action": "redirect", "result": {"new_alias": new_alias}}
+                logic.response = {
+                    "status": "success",
+                    "action": "redirect",
+                    "result": {"new_alias": new_alias}
+                }
+
+            # -------------------------------
+            # Allow (Response Builder)
+            # -------------------------------
             else:
                 logic.reject_reason = ""
-                raw_response = request.POST.get(f"{logic_type}_response_json", "")
-                logic.response = _normalize_builder_payload(raw_response)
+                raw_response = request.POST.get(f"{logic_type}_response_json", "").strip()
+                payload = _normalize_builder_payload(raw_response)
+
+                # Preserve list fields (including automatic_participants)
+                if isinstance(payload, dict) and "result" in payload and isinstance(payload["result"], dict):
+                    logic.response = payload
+                else:
+                    logic.response = {
+                        "status": "success",
+                        "action": "continue",
+                        "result": payload,
+                    }
+
+            # Freeze JSON so lists cannot collapse to {}
+            logic.response = json.loads(json.dumps(logic.response))
 
             logic.save()
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={logic_type}")
