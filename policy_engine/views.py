@@ -162,6 +162,13 @@ def logic_editor(request, rule_id):
     participant_available_vars = set(configured)
     service_available_vars = set(configured)
 
+    # Add all base schema-defined call_info fields
+    participant_available_vars.update(PARTICIPANT_CALL_INFO_SCHEMA.keys())
+    service_available_vars.update(SERVICE_CALL_INFO_SCHEMA.keys())
+
+    # Make dotted idp_attributes.* resolve properly
+    participant_available_vars.update(f"idp_attributes.{x}" for x in IdentityAttribute.objects.values_list("name", flat=True))
+    service_available_vars.update(f"idp_attributes.{x}" for x in IdentityAttribute.objects.values_list("name", flat=True))
     def iter_keys(params):
         for k in params.keys():
             if k.startswith("idp_attribute_"):
