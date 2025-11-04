@@ -263,12 +263,14 @@ document.addEventListener("DOMContentLoaded", () => {
             })
             .then(r => r.json())
             .then(data => {
-                const out = document.getElementById(`${type}-preview-result`);
-                out.style.display = "block";
-
+                const modalBody = document.getElementById("preview-modal-body");
                 const finalResponse = data.rendered_response ?? data;
-                out.textContent = JSON.stringify(finalResponse, null, 2);
+                modalBody.textContent = JSON.stringify(finalResponse, null, 2);
+
+                const previewModal = new bootstrap.Modal(document.getElementById("previewModal"));
+                previewModal.show();
             });
+
         }
 
 
