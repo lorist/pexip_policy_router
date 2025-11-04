@@ -14,7 +14,8 @@ import { initResponseBuilder } from "./builder_response.js";
 
 // Make operator builder available globally for dynamic refresh
 window.buildOperatorSelect = buildOperatorSelect;
-
+let participantBuilder = null;
+let serviceBuilder = null;
 ////////////////////////////////////////////////////////////////////////////////
 // Boot
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,10 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         // ---------------------------
-        // Response builders (with write-back sync)
-        // ---------------------------
-        // ---------------------------
-        // Response builders (final correct version)
+        // Response builders
         // ---------------------------
         ["participant", "service"].forEach(type => {
             const builderId = `${type}-response-builder`;
@@ -131,13 +129,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const builder = initResponseBuilder(builderId, hiddenSelector, schemaText, savedText);
 
-            // Ensure hidden field contains the currently loaded value
+            // ⭐ STORE GLOBAL REF
+            if (type === "participant") {
+                participantBuilder = builder;
+            } else {
+                serviceBuilder = builder;
+            }
+
+            // Ensure hidden contains initial builder state
             if (builder?.getValue) {
                 document.querySelector(hiddenSelector).value =
                     JSON.stringify(builder.getValue(), null, 2);
             }
 
-            // Live sync on every edit from builder
             if (builder?.onChange) {
                 builder.onChange(value => {
                     document.querySelector(hiddenSelector).value =
@@ -148,7 +152,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-        console.log("✅ UI restored and builders initialized");
+
+        console.log(" UI restored and builders initialized");
     });
 
     // Register schemas globally so change-handler can access the correct types
@@ -227,14 +232,18 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Preview logic against test call_info with explanation
+        // Preview logic (uses live builder state)
         if (btn.classList.contains("preview-logic")) {
             const type = btn.dataset.type;
             const form = btn.closest("form");
             const ruleId = document.getElementById("rule-id").value;
 
             const conditions = parseJSON(form.querySelector(`input[name='${type}_conditions']`)?.value) || {};
-            const response = parseJSON(form.querySelector(`input[name='${type}_response_json']`)?.value) || {};
+
+            // ✅ ALWAYS READ CURRENT BUILDER OUTPUT
+            const builder = (type === "participant") ? participantBuilder : serviceBuilder;
+            const liveResponseObj = builder?.getValue?.() || { status: "success", action: "continue", result: {} };
+            const response = liveResponseObj; // <- use live builder result instead of stale hidden input
 
             let callInfo = {};
             try {
@@ -252,18 +261,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 },
                 body: JSON.stringify({ type, conditions, response, call_info: callInfo })
             })
-                .then(r => r.json())
-                .then(data => {
-                    const out = document.getElementById(`${type}-preview-result`);
-                    out.style.display = "block";
+            .then(r => r.json())
+            .then(data => {
+                const out = document.getElementById(`${type}-preview-result`);
+                out.style.display = "block";
 
-                    // Only show the final rendered response
-                    const finalResponse = data.rendered_response ?? data;
-                    out.textContent = JSON.stringify(finalResponse, null, 2);
-                });
-
-
+                const finalResponse = data.rendered_response ?? data;
+                out.textContent = JSON.stringify(finalResponse, null, 2);
+            });
         }
+
+
         // Per-condition Preview
         if (btn.classList.contains("preview-condition")) {
             const row = btn.closest(".condition-row");

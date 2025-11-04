@@ -223,6 +223,13 @@ export function initResponseBuilder(containerId, hiddenSelector, schemaText, exi
         }
     });
 
+    //  Mark restored values dirty so they serialize
+    Object.keys(existingData).forEach(field => {
+        const wrapper = container.querySelector(`.response-field[data-field="${field}"]`);
+        if (wrapper) wrapper.dataset.dirty = "true";
+    });
+
+
     // -------------------------------------------------------------------------
     // Sync to hidden JSON
     // -------------------------------------------------------------------------
