@@ -192,6 +192,16 @@ SERVICE_RESPONSE_SCHEMA = {
     },
 
     # === Shared fields (common across most services) ===
+    "guest_identity_provider_group": {
+    "type": "string",
+    "label": "Guest Identity Provider Group",
+    "applies_to": ["conference", "lecture"]
+    },
+    "host_identity_provider_group": {
+    "type": "string",
+    "label": "Host Identity Provider Group",
+    "applies_to": ["conference", "lecture"]
+    },
     "description": {"type": "string"},
     "bypass_proxy": {"type": "bool", "default": False},
     "crypto_mode": {

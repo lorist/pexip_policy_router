@@ -261,7 +261,13 @@ def logic_editor(request, rule_id):
     collect_vars(service_logic.response, service_available_vars)
 
     participant_available_vars = sorted(participant_available_vars)
-    service_available_vars = sorted(service_available_vars)
+    service_available_vars = sorted(
+        set(service_available_vars) | set([
+            "guest_identity_provider_group",
+            "host_identity_provider_group",
+        ])
+    )
+
 
     # -------------------------------------------------------
     # Example Values
