@@ -386,7 +386,7 @@ def import_rules_csv(request):
                 s_logic_response_raw = row.get("service_logic_response", "").strip()
                 s_logic_response = parse_json(s_logic_response_raw, {}) if s_logic_response_raw else {}
                 ensure_idp_attrs_exist(s_logic_conditions)
-                # ✅ Load idp_attributes list from CSV
+                # Load idp_attributes list from CSV
                 idp_attrs_raw = row.get("idp_attributes", "").strip()
                 idp_attrs = parse_json(idp_attrs_raw, [])
                 if isinstance(idp_attrs, list):
@@ -1182,3 +1182,20 @@ def log_list(request):
             "source_host": source_host or "",  # 👈 added
         }
     })
+
+@maybe_protected
+@require_POST
+def reset_match_count(request, rule_id):
+    rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
+    rule.match_count = 0
+    rule.last_matched_at = None
+    rule.save(update_fields=["match_count", "last_matched_at"])
+    messages.success(request, f"Match count reset for “{rule.name}”.")
+    return redirect(request.META.get("HTTP_REFERER", "/"))
+
+@maybe_protected
+@require_POST
+def reset_all_match_counts(request):
+    PolicyProxyRule.objects.update(match_count=0, last_matched_at=None)
+    messages.success(request, "Match counts reset for all rules.")
+    return redirect(request.META.get("HTTP_REFERER", "/"))

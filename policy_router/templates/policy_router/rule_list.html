@@ -95,7 +95,13 @@
   <h5 class="mb-0">Rules</h5>
   <small class="text-muted">Scroll horizontally to view full details</small>
 </div>
-
+<form method="post" action="{% url 'policy_router:reset_all_match_counts' %}"
+      onsubmit="return confirm('Reset match count for ALL rules?');">
+  {% csrf_token %}
+  <button class="btn btn-outline-danger btn-sm">
+    Reset All Match Counts
+  </button>
+</form>
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive position-relative">
@@ -129,7 +135,23 @@
             <td class="text-muted text-center align-middle">
               <i class="bi bi-grip-vertical"></i>
             </td>
-            <td>{{ rule.match_count|default:0 }}</td>
+            <!-- <td>{{ rule.match_count|default:0 }}</td> -->
+            <td class="text-center align-middle">
+                <span class="fw-semibold">{{ rule.match_count|default:0 }}</span>
+
+                <form method="post"
+                      action="{% url 'policy_router:reset_match_count' rule.id %}"
+                      class="d-inline"
+                      onsubmit="return confirm('Reset match count for {{ rule.name }}?');">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="btn btn-sm btn-link p-0 ms-1"
+                            data-bs-toggle="tooltip"
+                            title="Reset hit count">
+                        <i class="bi bi-arrow-counterclockwise text-muted"></i>
+                    </button>
+                </form>
+            </td>
             <td>
               {% if rule.last_matched_at %}
                 {{ rule.last_matched_at|date:"Y-m-d H:i" }}
