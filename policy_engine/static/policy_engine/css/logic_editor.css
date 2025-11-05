@@ -121,3 +121,7 @@ button.remove-list-item:hover {
 .collapsible-help summary:hover {
     text-decoration: underline;
 }
+.ts-wrapper.single .ts-control {
+    padding: .25rem .5rem;
+    min-height: calc(1.5em + .5rem + 2px);
+}

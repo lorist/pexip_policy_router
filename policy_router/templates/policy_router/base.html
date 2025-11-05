@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  {% load static %}
   <title>{% block title %}Policy Router{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Bootstrap 5 -->
@@ -12,6 +13,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/lib/codemirror.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/theme/eclipse.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/theme/dracula.min.css">
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.bootstrap5.css">
+  <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/lib/codemirror.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/mode/javascript/javascript.min.js"></script>
 
@@ -127,6 +131,9 @@
           </li>
           <li class="nav-item">
             <a class="nav-link" href="{% url 'policy_router:rule_list' %}">Rules</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{% url 'policy_engine:identity_attribute_list' %}">Identity Attributes</a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="{% url 'policy_router:rule_tester' %}">Rule Tester</a>

@@ -4,15 +4,35 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods, require_POST
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
+from django.db.models.functions import Cast
+from django.db.models import JSONField
 from .schema import SERVICE_CALL_INFO_SCHEMA, PARTICIPANT_CALL_INFO_SCHEMA, PARTICIPANT_RESPONSE_SCHEMA, SERVICE_RESPONSE_SCHEMA
 from policy_router.models import PolicyProxyRule, PolicyRequestLog
-from .models import PolicyLogic
+from .models import PolicyLogic, IdentityAttribute
 from .forms import PolicyLogicForm
-from .utils import evaluate_conditions, apply_template, normalize_policy_response
+from .utils import evaluate_conditions, apply_template, normalize_policy_response, evaluate_single_condition, get_nested
 from django.utils.safestring import mark_safe
-
+from policy_router.views import maybe_protected
 
 logger = logging.getLogger("policy_engine.views")
+
+@maybe_protected
+def recent_call_info(request):
+    logs = (
+        PolicyRequestLog.objects
+        .exclude(request_params__isnull=True)
+        .order_by("-created_at")[:10]
+    )
+
+    items = []
+    for log in logs:
+        # request_params is already dict-like
+        params = log.request_params or {}
+        # normalize lists -> scalar values
+        clean = {k: v[0] if isinstance(v, list) and v else v for k, v in params.items()}
+        items.append(clean)
+
+    return JsonResponse({"items": items})
 
 # can probably get rid of this and the url when dev is finished
 from django.views.decorators.csrf import csrf_exempt
@@ -41,6 +61,8 @@ def test_signal(request):
 
 @require_http_methods(["GET", "POST"])
 def logic_editor(request, rule_id):
+    from policy_engine.models import IdentityAttribute  # <-- Ensure this exists
+
     rule = get_object_or_404(PolicyProxyRule, pk=rule_id)
     tab = request.GET.get("tab", "participant")
 
@@ -50,29 +72,28 @@ def logic_editor(request, rule_id):
     participant_form = PolicyLogicForm(request.POST or None, instance=participant_logic, prefix="participant")
     service_form = PolicyLogicForm(request.POST or None, instance=service_logic, prefix="service")
 
+    # -------------------------------------------------------
+    # Normalize response builder JSON (unchanged)
+    # -------------------------------------------------------
     def _normalize_builder_payload(raw_json: str | None) -> dict:
         """
-        Accepts the JSON string coming from the response builder.
-        Returns a dict in the strict Pexip shape:
-        {"status":"success","action":"continue","result":{...}}
-        Any top-level keys other than status/action/result are moved into result.
+        Ensure the response builder JSON is wrapped into
+        {status, action, result: {...}} without discarding list or dict fields.
         """
         try:
             parsed = json.loads((raw_json or "").strip() or "{}")
         except Exception:
             parsed = {}
 
-        if not isinstance(parsed, dict):
-            parsed = {}
+        # If already normalized, return as-is
+        if isinstance(parsed, dict) and "status" in parsed and "action" in parsed:
+            return parsed
 
-        # Start with an existing result if present and valid
-        result = parsed.get("result")
-        result = result if isinstance(result, dict) else {}
-
-        # Move *all* non-reserved top-level keys into result
-        for k, v in list(parsed.items()):
-            if k not in ("status", "action", "result"):
-                result[k] = v
+        # NEW: Accept either {result:{...}} or just { ... }
+        if isinstance(parsed, dict) and "result" in parsed and isinstance(parsed["result"], dict):
+            result = parsed["result"]
+        else:
+            result = parsed if isinstance(parsed, dict) else {}
 
         return {
             "status": "success",
@@ -80,64 +101,76 @@ def logic_editor(request, rule_id):
             "result": result,
         }
 
-    # -----------------------
-    # Handle POST
-    # -----------------------
+
+    # -------------------------------------------------------
+    # Save POST changes
+    # -------------------------------------------------------
     if request.method == "POST":
         logic_type = request.POST.get("logic_type")  # "participant" or "service"
         logic = participant_logic if logic_type == "participant" else service_logic
         form = participant_form if logic_type == "participant" else service_form
-
-        # The UI gives us participant_action or service_action
-        action_field = f"{logic_type}_action"
-        chosen_action = request.POST.get(action_field, "allow")  # default allow
+        chosen_action = request.POST.get(f"{logic_type}_action", "allow")
 
         if form.is_valid():
-            # Store conditions JSON
+            # -------------------------------
+            # Conditions
+            # -------------------------------
             raw_conditions = request.POST.get(f"{logic_type}_conditions", "").strip()
             logic.conditions = json.loads(raw_conditions or '{"combiner": "all", "rules": []}')
-
-            # Store enable + description
             logic.enabled = form.cleaned_data["enabled"]
             logic.description = form.cleaned_data["description"]
 
-            # Always store the reject reason field for UI state
-            # Always store description & enabled
-            logic.enabled = form.cleaned_data["enabled"]
-            logic.description = form.cleaned_data["description"]
-
-            # Clear reject reason unless action == reject
             reject_reason = (form.cleaned_data.get("reject_reason") or "").strip()
+
+            # -------------------------------
+            # Reject
+            # -------------------------------
             if chosen_action == "reject":
                 logic.reject_reason = reject_reason
-            else:
-                logic.reject_reason = ""
-                
-            if chosen_action == "reject":
                 logic.response = {
                     "status": "success",
                     "action": "reject",
-                    "result": {"reject_reason": reject_reason or "Call rejected"},
+                    "result": {"reject_reason": reject_reason or "Call rejected"}
                 }
 
+            # -------------------------------
+            # Redirect
+            # -------------------------------
             elif chosen_action == "redirect":
                 new_alias = request.POST.get("service_new_alias", "").strip()
                 logic.response = {
                     "status": "success",
                     "action": "redirect",
-                    "result": {"new_alias": new_alias},
+                    "result": {"new_alias": new_alias}
                 }
 
-            else:  # allow
-                raw_response = request.POST.get(f"{logic_type}_response_json", "")
-                logic.response = _normalize_builder_payload(raw_response)
+            # -------------------------------
+            # Allow (Response Builder)
+            # -------------------------------
+            else:
+                logic.reject_reason = ""
+                raw_response = request.POST.get(f"{logic_type}_response_json", "").strip()
+                payload = _normalize_builder_payload(raw_response)
+
+                # Preserve list fields (including automatic_participants)
+                if isinstance(payload, dict) and "result" in payload and isinstance(payload["result"], dict):
+                    logic.response = payload
+                else:
+                    logic.response = {
+                        "status": "success",
+                        "action": "continue",
+                        "result": payload,
+                    }
+
+            # Freeze JSON so lists cannot collapse to {}
+            logic.response = json.loads(json.dumps(logic.response))
 
             logic.save()
             return redirect(f"{reverse('policy_engine:logic_editor', args=[rule.id])}?tab={logic_type}")
 
-    # -----------------------
-    # Recent Call Info History
-    # -----------------------
+    # -------------------------------------------------------
+    # Recent call info
+    # -------------------------------------------------------
     recent_logs = (
         PolicyRequestLog.objects.filter(rule=rule)
         .exclude(request_params=None)
@@ -146,65 +179,38 @@ def logic_editor(request, rule_id):
 
     def extract_call_info(log):
         params = log.request_params or {}
-
-        # Flatten idp_attribute_* into idp_attributes dict
-        idp_attrs = {
-            k.replace("idp_attribute_", ""): v
-            for k, v in params.items()
-            if k.startswith("idp_attribute_") and v not in (None, "", [])
-        }
-
+        idp_attrs = {k.replace("idp_attribute_", ""): v for k, v in params.items() if k.startswith("idp_attribute_") and v}
         result = {**params}
         if idp_attrs:
             result["idp_attributes"] = idp_attrs
-
-        result["remote_display_name"] = (params.get("remote_display_name") or [""])[0]
-        result["remote_alias"] = (params.get("remote_alias") or [""])[0]
-        result["call_direction"] = (params.get("call_direction") or [""])[0] or log.call_direction
-        result["protocol"] = (params.get("protocol") or [""])[0] or log.protocol
-
-        label = (
-            result.get("remote_display_name")
-            or result.get("idp_attributes", {}).get("displayname")
-            or result.get("idp_attributes", {}).get("mail")
-            or result.get("local_alias", [""])[0]
-            or "(unknown)"
-        )
-
-        summary = f"{label} — {result.get('call_direction', '?')} — {result.get('protocol', '?')}"
-
-        return {"label": summary, "json": json.dumps(result, default=str, indent=2)}
+        return {"label": (result.get("remote_display_name") or result.get("local_alias") or "(unknown)"), "json": json.dumps(result, indent=2)}
 
     recent_call_info_list = [extract_call_info(log) for log in recent_logs]
 
-    # -----------------------
-    # Build Field Value Suggestions
-    # -----------------------
+    # -------------------------------------------------------
+    # Field Value Suggestions
+    # -------------------------------------------------------
     from collections import defaultdict
 
-    def flatten_params(params):
+    def flatten(params):
         for k, v in params.items():
             if k.startswith("idp_attribute_"):
                 yield f"idp_attributes.{k.replace('idp_attribute_', '')}", v
             else:
                 yield k, v
-    def is_participant_request(params):
-        return any(
-            k in params
-            for k in ("participant_uuid", "participant_type", "preauthenticated_role")
-        )
-    
+
+    def is_participant(params):
+        return any(k in params for k in ("participant_uuid", "participant_type", "preauthenticated_role"))
+
     participant_field_values = defaultdict(set)
     service_field_values = defaultdict(set)
 
     for log in recent_logs:
         params = log.request_params or {}
-        for key, value in flatten_params(params):
+        for key, value in flatten(params):
             values = value if isinstance(value, list) else [value]
             cleaned = [str(x) for x in values if x not in ("", None)]
-
-            # We can detect participant vs service request by presence of `service_type`
-            if is_participant_request(params):
+            if is_participant(params):
                 participant_field_values[key].update(cleaned)
             else:
                 service_field_values[key].update(cleaned)
@@ -212,9 +218,21 @@ def logic_editor(request, rule_id):
     participant_field_values = {k: sorted(v) for k, v in participant_field_values.items()}
     service_field_values = {k: sorted(v) for k, v in service_field_values.items()}
 
-    # -----------------------
-    # Available Variable Lists
-    # -----------------------
+    # -------------------------------------------------------
+    # AVAILABLE VARIABLES (Configured + Learned + Response Keys)
+    # -------------------------------------------------------
+    configured = {f"idp_attributes.{x}" for x in IdentityAttribute.objects.values_list("name", flat=True)}
+
+    participant_available_vars = set(configured)
+    service_available_vars = set(configured)
+
+    # Add all base schema-defined call_info fields
+    participant_available_vars.update(PARTICIPANT_CALL_INFO_SCHEMA.keys())
+    service_available_vars.update(SERVICE_CALL_INFO_SCHEMA.keys())
+
+    # Make dotted idp_attributes.* resolve properly
+    participant_available_vars.update(f"idp_attributes.{x}" for x in IdentityAttribute.objects.values_list("name", flat=True))
+    service_available_vars.update(f"idp_attributes.{x}" for x in IdentityAttribute.objects.values_list("name", flat=True))
     def iter_keys(params):
         for k in params.keys():
             if k.startswith("idp_attribute_"):
@@ -222,19 +240,14 @@ def logic_editor(request, rule_id):
             else:
                 yield k
 
-    participant_available_vars = set()
-    service_available_vars = set()
-
     for log in recent_logs:
         params = log.request_params or {}
         keys = set(iter_keys(params))
-
-        if is_participant_request(params):
+        if is_participant(params):
             participant_available_vars.update(keys)
         else:
             service_available_vars.update(keys)
 
-    # Also pull keys used in saved responses:
     def collect_vars(data, target):
         if isinstance(data, dict):
             for k, v in data.items():
@@ -248,90 +261,64 @@ def logic_editor(request, rule_id):
     collect_vars(service_logic.response, service_available_vars)
 
     participant_available_vars = sorted(participant_available_vars)
-    service_available_vars = sorted(service_available_vars)
+    service_available_vars = sorted(
+        set(service_available_vars) | set([
+            "guest_identity_provider_group",
+            "host_identity_provider_group",
+        ])
+    )
 
-    # -----------------------
+
+    # -------------------------------------------------------
     # Example Values
-    # -----------------------
+    # -------------------------------------------------------
     example_values = {}
     for log in recent_logs:
-        params = log.request_params or {}
-        for key, value in params.items():
-            if isinstance(value, list) and value:
-                value = value[0]
-            if value:
-                example_values.setdefault(key, set()).add(str(value))
-
+        for k, v in (log.request_params or {}).items():
+            val = v[0] if isinstance(v, list) and v else v
+            if val:
+                example_values.setdefault(k, set()).add(str(val))
     example_values = {k: sorted(v) for k, v in example_values.items()}
 
-    # def to_field_list(schema):
-    #     return {"fields": [
-    #         {"name": name, "label": name.replace("_", " ").title(), "type": props.get("type", "string")}
-    #         for name, props in schema.items()
-    #     ]}
+    # -------------------------------------------------------
+    # Condition Schema + UI Mode
+    # -------------------------------------------------------
+    def to_field_list(schema, extra):
+        fields = [{"name": n, "label": d.get("label", n.replace("_", " ").title()), "type": d.get("type", "string")} for n, d in schema.items()]
+        for key in sorted(extra):
+            fields.append({"name": key, "label": key, "type": "string"})
+        return {"fields": fields}
 
-    def to_field_list(schema):
-        return {
-            "fields": [
-                {
-                    "name": name,
-                    "label": details.get("label", name.replace("_", " ").title()),
-                    "type": details.get("type", "string")
-                }
-                for name, details in schema.items()
-            ]
-        }
-    
     def get_mode(logic):
         action = (logic.response or {}).get("action", "continue")
-        if action == "reject":
-            return "reject"
-        if action == "redirect":
-            return "redirect"
-        return "allow"  # default
-
-    # Determine UI mode from stored response
-    participant_mode = get_mode(participant_logic)
-    service_mode = get_mode(service_logic)
+        return "reject" if action == "reject" else "redirect" if action == "redirect" else "allow"
 
     context = {
         "rule": rule,
         "tab": tab,
-
         "participant_form": participant_form,
         "service_form": service_form,
         "participant_logic": participant_logic,
         "service_logic": service_logic,
-
-        "participant_mode": participant_mode,
-        "service_mode": service_mode,
-
-        "participant_condition_schema": mark_safe(json.dumps(to_field_list(PARTICIPANT_CALL_INFO_SCHEMA))),
-        "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA))),
-
+        "participant_mode": get_mode(participant_logic),
+        "service_mode": get_mode(service_logic),
+        "participant_condition_schema": mark_safe(json.dumps(to_field_list(PARTICIPANT_CALL_INFO_SCHEMA, participant_available_vars))),
+        "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA, service_available_vars))),
         "participant_conditions_json": json.dumps(participant_logic.conditions),
         "service_conditions_json": json.dumps(service_logic.conditions),
-
         "participant_response_json": json.dumps(participant_logic.response),
         "service_response_json": json.dumps(service_logic.response),
-
         "participant_response_schema": mark_safe(json.dumps(PARTICIPANT_RESPONSE_SCHEMA)),
         "service_response_schema": mark_safe(json.dumps(SERVICE_RESPONSE_SCHEMA)),
-
         "recent_call_info_list": recent_call_info_list,
-
         "participant_field_values": mark_safe(json.dumps(participant_field_values)),
         "service_field_values": mark_safe(json.dumps(service_field_values)),
-
         "participant_available_vars": participant_available_vars,
         "service_available_vars": service_available_vars,
         "call_info_example_values": example_values,
     }
 
-
     return render(request, "policy_engine/logic_editor.html", context)
-
-
 
 
 @csrf_exempt
@@ -427,4 +414,35 @@ def logic_preview(request, rule_id):
         "matched": match["matched"],
         "rendered_response": rendered,
         "explanation": explanation,
+    }, status=200)
+
+@require_POST
+@csrf_exempt
+def condition_preview(request, rule_id):
+    """
+    Preview a SINGLE condition row against Test Call Info.
+    """
+    try:
+        data = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    field = data.get("field")
+    operator = data.get("operator")
+    value = data.get("value")
+    call_info = data.get("call_info") or {}
+
+    if not field or not operator:
+        return JsonResponse({"error": "Missing field or operator"}, status=400)
+
+    actual = get_nested(call_info, field)
+
+    matched = evaluate_single_condition(actual, operator, value, call_info)
+
+    return JsonResponse({
+        "matched": bool(matched),
+        "field": field,
+        "operator": operator,
+        "value": value,
+        "actual": actual,
     }, status=200)

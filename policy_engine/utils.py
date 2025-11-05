@@ -1,6 +1,7 @@
 import re
 import logging
 from typing import Any, Dict, List, Tuple
+from jinja2 import Environment, StrictUndefined
 
 logger = logging.getLogger("policy_engine.utils")
 
@@ -247,3 +248,4 @@ def normalize_policy_response(data):
         "action": "continue",
         "result": data
     }
+

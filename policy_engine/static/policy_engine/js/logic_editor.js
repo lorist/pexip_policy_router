@@ -3,9 +3,19 @@
 // response builders, recent-call loader, and Jinja var/filter autocomplete.
 
 import { waitForSchemas } from "./utils.js";
-import { renderGroupFromJSON, syncJSON, buildConditionRow, buildGroup } from "./builder_conditions.js";
+import {
+    renderGroupFromJSON,
+    syncJSON,
+    buildConditionRow,
+    buildGroup,
+    buildOperatorSelect
+} from "./builder_conditions.js";
 import { initResponseBuilder } from "./builder_response.js";
 
+// Make operator builder available globally for dynamic refresh
+window.buildOperatorSelect = buildOperatorSelect;
+let participantBuilder = null;
+let serviceBuilder = null;
 ////////////////////////////////////////////////////////////////////////////////
 // Boot
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,6 +64,11 @@ document.addEventListener("DOMContentLoaded", () => {
         link.addEventListener("click", () => {
             const isService = link.href.includes("tab=service");
             setSuggestSources(isService ? "service" : "participant");
+
+            // ✅ Update condition schema reference on tab change
+            window.CURRENT_CONDITION_SCHEMA = isService
+                ? window.SERVICE_CONDITION_SCHEMA
+                : window.PARTICIPANT_CONDITION_SCHEMA;
         });
     });
 
@@ -86,9 +101,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 if (btn.classList.contains("add-condition")) {
                     list.insertAdjacentHTML("beforeend", buildConditionRow(schema, "", "equals", ""));
+                    enhanceConditionFieldSelects(restored);
                 }
                 if (btn.classList.contains("add-group")) {
                     list.insertAdjacentHTML("beforeend", buildGroup());
+                    enhanceConditionFieldSelects(restored);
                 }
                 if (btn.classList.contains("remove-condition")) {
                     btn.closest(".condition-row")?.remove();
@@ -104,10 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         // ---------------------------
-        // Response builders (with write-back sync)
-        // ---------------------------
-        // ---------------------------
-        // Response builders (final correct version)
+        // Response builders
         // ---------------------------
         ["participant", "service"].forEach(type => {
             const builderId = `${type}-response-builder`;
@@ -117,13 +131,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const builder = initResponseBuilder(builderId, hiddenSelector, schemaText, savedText);
 
-            // Ensure hidden field contains the currently loaded value
+            // ⭐ STORE GLOBAL REF
+            if (type === "participant") {
+                participantBuilder = builder;
+            } else {
+                serviceBuilder = builder;
+            }
+
+            // Ensure hidden contains initial builder state
             if (builder?.getValue) {
                 document.querySelector(hiddenSelector).value =
                     JSON.stringify(builder.getValue(), null, 2);
             }
 
-            // Live sync on every edit from builder
             if (builder?.onChange) {
                 builder.onChange(value => {
                     document.querySelector(hiddenSelector).value =
@@ -134,8 +154,80 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-        console.log("✅ UI restored and builders initialized");
+
+        console.log(" UI restored and builders initialized");
+        // Make condition field dropdown searchable
+        function enhanceConditionFieldSelects(root=document) {
+            root.querySelectorAll(".condition-field").forEach(el => {
+                if (el.dataset.tomselect) return; // prevent double init
+                el.dataset.tomselect = "1";
+                new TomSelect(el, {
+                    allowEmptyOption: true,
+                    create: false,
+                    maxOptions: 500,
+                    sortField: { field: "text", direction: "asc" },
+                    placeholder: "Search field…"
+                });
+            });
+        }
+        enhanceConditionFieldSelects(document);
+
     });
+
+    // Register schemas globally so change-handler can access the correct types
+    window.PARTICIPANT_CONDITION_SCHEMA = safeParseJSONFromTag("participant_condition_schema_json", { fields: [] });
+    window.SERVICE_CONDITION_SCHEMA = safeParseJSONFromTag("service_condition_schema_json", { fields: [] });
+
+    // Set current schema (default tab)
+    window.CURRENT_CONDITION_SCHEMA = (activeTab === "service")
+        ? window.SERVICE_CONDITION_SCHEMA
+        : window.PARTICIPANT_CONDITION_SCHEMA;
+
+    // Dynamically refresh operator + value input when field changes
+    document.body.addEventListener("change", (event) => {
+        if (!event.target.classList.contains("condition-field")) return;
+
+        const row = event.target.closest(".condition-row");
+        if (!row) return;
+
+        const field = event.target.value;
+        const schema = window.CURRENT_CONDITION_SCHEMA || { fields: [] };
+        const schemaFields = schema.fields || [];
+
+        // Determine type (schema or idp_attributes.* override to string)
+        const effectiveType = field.startsWith("idp_attributes.")
+            ? "string"
+            : (schemaFields.find(f => f.name === field)?.type || "string");
+
+        // --- Rebuild Operator Select ---
+        const operatorSelectEl = row.querySelector(".condition-operator");
+        const currentOperator = operatorSelectEl.value;
+
+        const newOperator = window.buildOperatorSelect(field, schemaFields, currentOperator);
+        operatorSelectEl.insertAdjacentHTML("afterend", newOperator);
+        operatorSelectEl.remove();
+
+
+        // --- Rebuild Value Input ---
+        const valueEl = row.querySelector(".condition-value");
+        const currentValue = valueEl.value;
+        let newValueHTML = "";
+
+        if (effectiveType === "bool") {
+            newValueHTML = `
+                <select class="form-select form-select-sm condition-value">
+                    <option value="true" ${currentValue === "true" ? "selected" : ""}>true</option>
+                    <option value="false" ${currentValue === "false" ? "selected" : ""}>false</option>
+                </select>`;
+        } else if (effectiveType === "number") {
+            newValueHTML = `<input type="number" class="form-control form-control-sm condition-value" value="${currentValue}">`;
+        } else {
+            newValueHTML = `<input type="text" class="form-control form-control-sm condition-value" value="${currentValue}">`;
+        }
+
+        valueEl.outerHTML = newValueHTML;
+    });
+
 
     // ---------------------------
     // Preview + Call Info Loader (both tabs)
@@ -158,14 +250,18 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Preview logic against test call_info with explanation
+        // Preview logic (uses live builder state)
         if (btn.classList.contains("preview-logic")) {
             const type = btn.dataset.type;
             const form = btn.closest("form");
             const ruleId = document.getElementById("rule-id").value;
 
             const conditions = parseJSON(form.querySelector(`input[name='${type}_conditions']`)?.value) || {};
-            const response = parseJSON(form.querySelector(`input[name='${type}_response_json']`)?.value) || {};
+
+            // ✅ ALWAYS READ CURRENT BUILDER OUTPUT
+            const builder = (type === "participant") ? participantBuilder : serviceBuilder;
+            const liveResponseObj = builder?.getValue?.() || { status: "success", action: "continue", result: {} };
+            const response = liveResponseObj; // <- use live builder result instead of stale hidden input
 
             let callInfo = {};
             try {
@@ -183,18 +279,58 @@ document.addEventListener("DOMContentLoaded", () => {
                 },
                 body: JSON.stringify({ type, conditions, response, call_info: callInfo })
             })
-                .then(r => r.json())
-                .then(data => {
-                    const out = document.getElementById(`${type}-preview-result`);
-                    out.style.display = "block";
+            .then(r => r.json())
+            .then(data => {
+                const modalBody = document.getElementById("preview-modal-body");
+                const finalResponse = data.rendered_response ?? data;
+                modalBody.textContent = JSON.stringify(finalResponse, null, 2);
 
-                    // Only show the final rendered response
-                    const finalResponse = data.rendered_response ?? data;
-                    out.textContent = JSON.stringify(finalResponse, null, 2);
-                });
-
+                const previewModal = new bootstrap.Modal(document.getElementById("previewModal"));
+                previewModal.show();
+            });
 
         }
+
+
+        // Per-condition Preview
+        if (btn.classList.contains("preview-condition")) {
+            const row = btn.closest(".condition-row");
+            const field = row.querySelector(".condition-field")?.value || "";
+            const operator = row.querySelector(".condition-operator")?.value || "equals";
+            const value = row.querySelector(".condition-value")?.value || "";
+
+            const form = btn.closest("form");
+            const type = form.querySelector("input[name='logic_type']").value;
+            let callInfo = {};
+
+            try {
+                callInfo = JSON.parse(document.getElementById(`${type}-call-info`).value || "{}");
+            } catch {
+                alert("⚠️ Invalid JSON in Test Call Info");
+                return;
+            }
+
+            const ruleId = document.getElementById("rule-id").value;
+
+            fetch(`/policy-engine/${ruleId}/condition-preview/`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": document.querySelector("[name='csrfmiddlewaretoken']").value
+                },
+                body: JSON.stringify({ field, operator, value, call_info: callInfo })
+            })
+            .then(r => r.json())
+            .then(res => {
+                row.querySelectorAll(".cond-preview-chip").forEach(el => el.remove());
+                const chip = document.createElement("span");
+                chip.className = `cond-preview-chip badge ${res.matched ? "bg-success" : "bg-danger"}`;
+                chip.style.marginLeft = "8px";
+                chip.textContent = res.matched ? "matched" : "no match";
+                btn.insertAdjacentElement("afterend", chip);
+            });
+        }
+
     });
 
     // ---------------------------
@@ -518,4 +654,107 @@ document.addEventListener("input", function (e) {
     document.querySelector(`.${type}-response-block`).style.display = (mode === "allow") ? "" : "none";
     document.querySelector(`.${type}-reject-block`).style.display = (mode === "reject") ? "" : "none";
     document.querySelector(`.${type}-redirect-block`).style.display = (mode === "redirect") ? "" : "none";
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = new bootstrap.Modal(document.getElementById("recentCallModal"));
+  const list = document.getElementById("recent-call-list");
+  const search = document.getElementById("recent-call-search");
+
+  let itemsCache = [];
+  let currentType = null; // <--- TRACK WHICH TAB WE’RE APPLYING TO
+
+  document.querySelectorAll(".load-recent-call-info").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      currentType = btn.dataset.type; // "participant" or "service"
+
+      try {
+        const res = await fetch("/policy-engine/recent-call-info/");
+        const { items } = await res.json();
+
+        if (!items || !items.length) {
+          alert("No recent calls found.");
+          return;
+        }
+
+        itemsCache = items;
+        search.value = "";
+        renderList(itemsCache);
+
+        modal.show();
+
+      } catch (err) {
+        console.error(err);
+        alert("Error loading call info — check logs.");
+      }
+    });
+  });
+
+
+  function renderList(data) {
+    list.innerHTML = data.map((ci, i) => {
+      const call = ci || {};
+
+      const who =
+        call.remote_display_name ||
+        call.remote_alias ||
+        call.participant_uuid ||
+        "Unknown";
+
+      const service =
+        call.unique_service_name ||
+        call.service_name ||
+        call.service_tag ||
+        "";
+
+      const proto = call.protocol || "";
+      const loc = call.location || call.system_location_name || "";
+      const dir = call.call_direction || "";
+
+      const tooltip = JSON.stringify(ci, null, 2)
+        .replace(/"/g, '&quot;')
+        .replace(/\n/g, '&#10;');
+
+      return `
+        <li class="list-group-item list-group-item-action recent-call-item py-2"
+            data-index="${i}"
+            title="${tooltip}">
+          <div class="small">
+            <strong>${who}</strong>
+            ${service ? `<span class="text-muted"> · ${service}</span>` : ""}
+            <div class="text-muted small">
+              ${proto ? `protocol: ${proto}` : ""}
+              ${loc ? ` · location: ${loc}` : ""}
+              ${dir ? ` · direction: ${dir}` : ""}
+            </div>
+          </div>
+        </li>
+      `;
+    }).join("");
+
+    // Click → Insert JSON
+    list.querySelectorAll(".recent-call-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        const textarea = document.getElementById(`${currentType}-call-info`);
+        if (!textarea) return;
+        textarea.value = JSON.stringify(itemsCache[el.dataset.index], null, 2);
+        modal.hide();
+      });
+    });
+
+    // Tooltip activate
+    list.querySelectorAll('[title]').forEach(el => {
+      new bootstrap.Tooltip(el);
+    });
+  }
+
+
+  // Live search filter
+  search.addEventListener("input", () => {
+    const q = search.value.toLowerCase();
+    const filtered = itemsCache.filter(ci =>
+      JSON.stringify(ci).toLowerCase().includes(q)
+    );
+    renderList(filtered);
+  });
 });

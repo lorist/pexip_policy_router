@@ -22,7 +22,7 @@ from .models import PolicyProxyRule, PolicyRequestLog
 from .forms import PolicyProxyRuleForm
 from django.views.decorators.csrf import csrf_exempt
 from policy_router.auth import basic_auth_django_user
-from policy_engine.models import PolicyLogic
+from policy_engine.models import PolicyLogic, IdentityAttribute
 from policy_engine.utils import evaluate_conditions, apply_template, normalize_policy_response
 from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
@@ -236,32 +236,84 @@ def export_rules_csv(request):
         "override_service_response",
         "always_continue_participant",
         "override_participant_response",
+
+        # Advanced logic fields
+        "participant_logic_enabled",
+        "participant_logic_conditions",
+        "participant_logic_response",
+        "service_logic_enabled",
+        "service_logic_conditions",
+        "service_logic_response",
+        "idp_attributes"
     ])
 
+
     for rule in PolicyProxyRule.objects.all().order_by("priority"):
+        # Fetch logic objects (may not exist)
+        p_logic = PolicyLogic.objects.filter(rule=rule, rule_type="participant").first()
+        s_logic = PolicyLogic.objects.filter(rule=rule, rule_type="service").first()
+
         writer.writerow([
             smart_str(rule.name or ""),
             smart_str(rule.regex or ""),
             smart_str(rule.priority or ""),
             smart_str(rule.is_active),
-            json.dumps(rule.protocols or []),
-            json.dumps(rule.call_directions or []),
+            json.dumps(rule.protocols or [], ensure_ascii=False),
+            json.dumps(rule.call_directions or [], ensure_ascii=False),
             smart_str(rule.source_match or ""),
             smart_str(rule.service_target_url or ""),
             smart_str(rule.participant_target_url or ""),
             smart_str(rule.basic_auth_username or ""),
             smart_str(rule.basic_auth_password or ""),
             smart_str(rule.always_continue_service),
-            json.dumps(rule.override_service_response or {}),
+            json.dumps(rule.override_service_response or {}, ensure_ascii=False),
             smart_str(rule.always_continue_participant),
-            json.dumps(rule.override_participant_response or {}),
+            json.dumps(rule.override_participant_response or {}, ensure_ascii=False),
+
+            # Advanced logic export
+            smart_str(p_logic.enabled if p_logic else ""),
+            json.dumps(p_logic.conditions if p_logic else {}, ensure_ascii=False),
+            json.dumps(p_logic.response if p_logic else {}, ensure_ascii=False),
+            smart_str(s_logic.enabled if s_logic else ""),
+            json.dumps(s_logic.conditions if s_logic else {}, ensure_ascii=False),
+            json.dumps(s_logic.response if s_logic else {}, ensure_ascii=False),
+            json.dumps(list(IdentityAttribute.objects.values_list("name", flat=True)), ensure_ascii=False)
         ])
+
 
     return response
 
 # -----------------------------
 # CSV IMPORT
 # -----------------------------
+from policy_engine.models import IdentityAttribute
+
+def ensure_idp_attrs_exist(conditions):
+    """
+    Scan conditions JSON tree and create IdentityAttribute entries
+    for any field like idp_attributes.<name>
+    """
+    if not isinstance(conditions, dict):
+        return
+
+    def walk(node):
+        if isinstance(node, dict):
+            # direct simple rule case
+            field = node.get("field")
+            if isinstance(field, str) and field.startswith("idp_attributes."):
+                attr = field.split(".", 1)[1]
+                IdentityAttribute.objects.get_or_create(name=attr)
+
+            # nested groups
+            for value in node.values():
+                walk(value)
+
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(conditions)
+
 @csrf_exempt
 @maybe_protected
 @require_http_methods(["POST"])
@@ -314,7 +366,35 @@ def import_rules_csv(request):
                 call_dirs = parse_json(row.get("call_directions"), [])
                 override_service = parse_json(row.get("override_service_response"), {})
                 override_part = parse_json(row.get("override_participant_response"), {})
+                # advanced logic fields
+                p_logic_enabled_raw = row.get("participant_logic_enabled", "").strip()
+                p_logic_enabled = p_logic_enabled_raw.lower() in ("true","1","yes")
 
+                p_logic_conditions_raw = row.get("participant_logic_conditions", "").strip()
+                p_logic_conditions = parse_json(p_logic_conditions_raw, {}) if p_logic_conditions_raw else {}
+
+                p_logic_response_raw = row.get("participant_logic_response", "").strip()
+                p_logic_response = parse_json(p_logic_response_raw, {}) if p_logic_response_raw else {}
+                ensure_idp_attrs_exist(p_logic_conditions)
+
+                s_logic_enabled_raw = row.get("service_logic_enabled", "").strip()
+                s_logic_enabled = s_logic_enabled_raw.lower() in ("true","1","yes")
+
+                s_logic_conditions_raw = row.get("service_logic_conditions", "").strip()
+                s_logic_conditions = parse_json(s_logic_conditions_raw, {}) if s_logic_conditions_raw else {}
+
+                s_logic_response_raw = row.get("service_logic_response", "").strip()
+                s_logic_response = parse_json(s_logic_response_raw, {}) if s_logic_response_raw else {}
+                ensure_idp_attrs_exist(s_logic_conditions)
+                # ✅ Load idp_attributes list from CSV
+                idp_attrs_raw = row.get("idp_attributes", "").strip()
+                idp_attrs = parse_json(idp_attrs_raw, [])
+                if isinstance(idp_attrs, list):
+                   for attr in idp_attrs:
+                       attr = str(attr).strip()
+                       if attr:
+                           IdentityAttribute.objects.get_or_create(name=attr)
+                           
                 defaults = {
                     "regex": regex,
                     "priority": int(row.get("priority", 0) or 0),
@@ -333,10 +413,53 @@ def import_rules_csv(request):
                 }
 
                 obj, created_flag = PolicyProxyRule.objects.update_or_create(name=name, defaults=defaults)
+
+                # ------------------------------------------------
+                # Restore Participant Logic (only if provided)
+                # ------------------------------------------------
+                if p_logic_enabled or p_logic_conditions or p_logic_response:
+                    PolicyLogic.objects.update_or_create(
+                        rule=obj,
+                        rule_type="participant",
+                        defaults={
+                            "enabled": p_logic_enabled,
+                            "conditions": p_logic_conditions,
+                            "response": p_logic_response,
+                        }
+                    )
+
+                # ------------------------------------------------
+                # Restore Service Logic (only if provided)
+                # ------------------------------------------------
+                if s_logic_enabled or s_logic_conditions or s_logic_response:
+                    PolicyLogic.objects.update_or_create(
+                        rule=obj,
+                        rule_type="service",
+                        defaults={
+                            "enabled": s_logic_enabled,
+                            "conditions": s_logic_conditions,
+                            "response": s_logic_response,
+                        }
+                    )
+
+                # ------------------------------------------------
+                # ENABLE ADVANCED LOGIC MODE on the rule if logic exists
+                # ------------------------------------------------
+                if (p_logic_enabled or p_logic_conditions or p_logic_response or
+                    s_logic_enabled or s_logic_conditions or s_logic_response):
+                    if not obj.advanced_logic_enabled:
+                        obj.advanced_logic_enabled = True
+                        obj.save(update_fields=["advanced_logic_enabled"])
+
+                # ------------------------------------------------
+                # Update counters AFTER rule + logic save
+                # ------------------------------------------------
                 if created_flag:
                     created += 1
                 else:
                     updated += 1
+
+
             except Exception as e:
                 failed += 1
                 logger.exception(f"Row {i} import failed: {e}")

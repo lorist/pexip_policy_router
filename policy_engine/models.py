@@ -8,6 +8,30 @@ def default_conditions():
 def default_response():
     return {"status": "success", "action": "continue", "result": {}}
 
+class IdentityAttribute(models.Model):
+    """
+    Defines IdP attributes (idp_attribute_*) that should appear in the
+    advanced logic UI, condition builder, and Jinja suggestions.
+    """
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Just the attribute name, e.g. 'title', 'mail', 'department'"
+    )
+
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional description shown in UI dropdowns and help tooltips."
+    )
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class PolicyLogic(models.Model):
     class RuleType(models.TextChoices):
         PARTICIPANT = "participant", _("Participant")

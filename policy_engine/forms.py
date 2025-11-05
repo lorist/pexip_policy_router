@@ -1,6 +1,6 @@
 import json
 from django import forms
-from .models import PolicyLogic
+from .models import PolicyLogic, IdentityAttribute
 
 
 class JSONHiddenField(forms.CharField):
@@ -18,6 +18,15 @@ class JSONHiddenField(forms.CharField):
         except json.JSONDecodeError:
             raise forms.ValidationError("Invalid JSON format.")
 
+
+class IdentityAttributeForm(forms.ModelForm):
+    class Meta:
+        model = IdentityAttribute
+        fields = ["name", "description"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "e.g., title"}),
+            "description": forms.TextInput(attrs={"class": "form-control", "placeholder": "Optional description"}),
+        }
 
 
 class PolicyLogicForm(forms.ModelForm):
