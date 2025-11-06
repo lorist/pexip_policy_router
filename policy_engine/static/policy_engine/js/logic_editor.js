@@ -126,12 +126,17 @@ document.addEventListener("DOMContentLoaded", () => {
         ["participant", "service"].forEach(type => {
             const builderId = `${type}-response-builder`;
             const hiddenSelector = `input[name='${type}_response_json']`;
-            const schemaText = getText(`${type}_response_schema_json`);
-            const savedText = getText(`${type}_response_json_data`);
+            const schemaText = document.getElementById(`${type}_response_schema_json`)?.textContent || "{}";
+            let savedText = getText(`${type}_response_json_data`);
+
+            try {
+            // First parse unwraps json_script’s string wrapper
+            savedText = JSON.parse(savedText);
+            } catch (_) {}
 
             const builder = initResponseBuilder(builderId, hiddenSelector, schemaText, savedText);
 
-            // ⭐ STORE GLOBAL REF
+            // STORE GLOBAL REF
             if (type === "participant") {
                 participantBuilder = builder;
             } else {

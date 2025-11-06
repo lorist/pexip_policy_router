@@ -374,17 +374,24 @@
 </script>
 
 <!-- JSON SCHEMA + EDITOR DATA -->
-<script id="participant_condition_schema_json" type="application/json">{{ participant_condition_schema|safe }}</script>
-<script id="service_condition_schema_json" type="application/json">{{ service_condition_schema|safe }}</script>
-
-<script id="participant_response_schema_json" type="application/json">{{ participant_response_schema|safe }}</script>
-<script id="participant_response_json_data" type="application/json">{{ participant_response_json|safe }}</script>
-
-<script id="service_response_schema_json" type="application/json">{{ service_response_schema|safe }}</script>
-<script id="service_response_json_data" type="application/json">{{ service_response_json|safe }}</script>
-<script id="participant_conditions_json" type="application/json">
-  {{ participant_conditions_json|safe }}
+<script id="participant_condition_schema_json" type="application/json">
+  {{ participant_condition_schema|safe }}
 </script>
+<script id="service_condition_schema_json" type="application/json">
+  {{ service_condition_schema|safe }}
+</script>
+
+<script id="participant_response_schema_json" type="application/json">
+  {{ participant_response_schema|safe }}
+</script>
+
+<script id="service_response_schema_json" type="application/json">
+  {{ service_response_schema|safe }}
+</script>
+{{ service_response_json|json_script:"service_response_json_data" }}
+
+{{ participant_response_json|json_script:"participant_response_json_data" }}
+
 
 <script id="service_conditions_json" type="application/json">
   {{ service_conditions_json|safe }}

@@ -292,6 +292,32 @@ def logic_editor(request, rule_id):
     def get_mode(logic):
         action = (logic.response or {}).get("action", "continue")
         return "reject" if action == "reject" else "redirect" if action == "redirect" else "allow"
+    def normalize_response(obj):
+        """
+        Convert old Python-literal dicts or JSON-strings into a real JSON-safe dict
+        (keeps Jinja {{ }} intact).
+        """
+        # If stored as a string, first try JSON
+        if isinstance(obj, str):
+            try:
+                return json.loads(obj)
+            except Exception:
+                pass
+
+        # If stored as Python-literal dict (the real case here)
+        if isinstance(obj, dict):
+            # json.dumps → forces proper JSON quoting, braces preserved
+            # json.loads → returns clean JSON dict
+            return json.loads(json.dumps(obj))
+
+        return {}
+    
+    def safe_json_with_jinja(raw):
+        data = normalize_response(raw)  # ensure dict form
+        json_str = json.dumps(data, ensure_ascii=False)
+        # Restore literal Jinja braces that JSON escapes as \u007b\u007b and \u007d\u007d
+        json_str = json_str.replace("\\u007b\\u007b", "{{").replace("\\u007d\\u007d", "}}")
+        return mark_safe(json_str)
 
     context = {
         "rule": rule,
@@ -306,8 +332,8 @@ def logic_editor(request, rule_id):
         "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA, service_available_vars))),
         "participant_conditions_json": json.dumps(participant_logic.conditions),
         "service_conditions_json": json.dumps(service_logic.conditions),
-        "participant_response_json": json.dumps(participant_logic.response),
-        "service_response_json": json.dumps(service_logic.response),
+        "participant_response_json": safe_json_with_jinja(participant_logic.response),
+        "service_response_json": safe_json_with_jinja(service_logic.response),
         "participant_response_schema": mark_safe(json.dumps(PARTICIPANT_RESPONSE_SCHEMA)),
         "service_response_schema": mark_safe(json.dumps(SERVICE_RESPONSE_SCHEMA)),
         "recent_call_info_list": recent_call_info_list,

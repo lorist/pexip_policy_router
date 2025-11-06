@@ -126,7 +126,19 @@ export function initResponseBuilder(containerId, hiddenSelector, schemaText, exi
         }
 
         // string
-        return `<input type="text" class="form-control form-control-sm response-input" data-field="${field}" data-type="string" value="${(typeof existingVal === "string" && !inTemplate) ? existingVal : ""}">`;
+        if (inTemplate) {
+            return `
+            <div class="value-wrapper" data-field="${field}" data-type="string">
+                <textarea class="form-control form-control-sm response-template-input"
+                          data-field="${field}"
+                          rows="2">${existingVal}</textarea>
+            </div>`;
+        }
+        return `<input type="text"
+                       class="form-control form-control-sm response-input"
+                       data-field="${field}"
+                       data-type="string"
+                       value="${existingVal ?? ""}">`;
     }
 
     function buildListField(field, meta) {
