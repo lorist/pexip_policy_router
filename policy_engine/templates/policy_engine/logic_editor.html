@@ -116,7 +116,11 @@
       </div>
 
       <div class="form-check form-switch mb-3">
-        {{ participant_form.enabled }} <label>Enabled</label>
+        <input type="checkbox"
+              name="participant-enabled"
+              id="id_participant-enabled"
+              {% if participant_enabled %}checked{% endif %}>
+        <label for="id_participant-enabled">Enabled</label>
       </div>
 
       {{ participant_form.description }}
@@ -229,7 +233,12 @@
       </div>
 
       <div class="form-check form-switch mb-3">
-        {{ service_form.enabled }} <label>Enabled</label>
+        <input type="checkbox"
+              name="service-enabled"
+              id="id_service-enabled"
+              {% if service_enabled %}checked{% endif %}>
+        <label for="id_service-enabled">Enabled</label>
+
       </div>
 
       {{ service_form.description }}
@@ -372,7 +381,25 @@
     document.querySelector(`.${type}-response-block`)?.style.setProperty("display", mode === "allow" ? "" : "none");
   });
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // Restore saved state from localStorage
+  ["participant-enabled", "service-enabled"].forEach(key => {
+    const el = document.querySelector(`input[name="${key}"]`);
+    if (!el) return;
+    const saved = localStorage.getItem(key);
+    if (saved !== null) el.checked = saved === "true";
+  });
 
+  // Save state on change
+  document.addEventListener("change", function (e) {
+    const key = e.target.name;
+    if (key === "participant-enabled" || key === "service-enabled") {
+      localStorage.setItem(key, e.target.checked ? "true" : "false");
+    }
+  });
+});
+</script>
 <!-- JSON SCHEMA + EDITOR DATA -->
 <script id="participant_condition_schema_json" type="application/json">
   {{ participant_condition_schema|safe }}

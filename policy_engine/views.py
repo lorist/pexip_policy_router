@@ -328,6 +328,8 @@ def logic_editor(request, rule_id):
         "service_logic": service_logic,
         "participant_mode": get_mode(participant_logic),
         "service_mode": get_mode(service_logic),
+        "participant_enabled": participant_logic.enabled,
+        "service_enabled": service_logic.enabled,
         "participant_condition_schema": mark_safe(json.dumps(to_field_list(PARTICIPANT_CALL_INFO_SCHEMA, participant_available_vars))),
         "service_condition_schema": mark_safe(json.dumps(to_field_list(SERVICE_CALL_INFO_SCHEMA, service_available_vars))),
         "participant_conditions_json": json.dumps(participant_logic.conditions),
