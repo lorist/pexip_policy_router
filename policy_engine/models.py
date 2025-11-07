@@ -31,6 +31,20 @@ class IdentityAttribute(models.Model):
     def __str__(self):
         return self.name
 
+# policy_engine/models.py
+
+class IdentityValue(models.Model):
+    """
+    Stores per-user identity attributes collected from participant calls.
+    Subject is a stable unique identity key (idp_uuid preferred).
+    """
+    subject = models.CharField(max_length=255, db_index=True)
+    attrs = models.JSONField(default=dict)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("subject",)
 
 class PolicyLogic(models.Model):
     class RuleType(models.TextChoices):

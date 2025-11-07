@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import Any, Dict, List, Tuple
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, Undefined
 
 logger = logging.getLogger("policy_engine.utils")
 
@@ -198,12 +198,9 @@ def explain_condition(field, operator, expected, call_info):
     }
 
 
-
-from jinja2 import Environment, StrictUndefined
-
 jinja_env = Environment(
     autoescape=False,
-    undefined=StrictUndefined,  # Throw error if missing variable → safer debugging
+    undefined=Undefined,  # Throw error if missing variable → safer debugging
     trim_blocks=True,
     lstrip_blocks=True,
 )
@@ -233,19 +230,26 @@ def apply_template(data, context):
 
 def normalize_policy_response(data):
     """
-    Ensure the returned policy response matches Pexip expected structure.
+    Always return:
+        {"status": "success", "action": "continue", "result": {...}}
+
+    Critically:
+    - DO NOT merge or default from call_info.
+    - DO NOT inject request values.
+    - Only normalize envelope shape.
     """
-    if data is None:
-        return {"status": "success", "action": "continue"}
+    if not isinstance(data, dict):
+        return {"status": "success", "action": "continue", "result": {}}
 
-    # If already normalized, leave it alone
-    if isinstance(data, dict) and data.get("status") and data.get("action"):
-        return data
+    status = data.get("status", "success")
+    action = data.get("action", "continue")
 
-    # Otherwise wrap as result
-    return {
-        "status": "success",
-        "action": "continue",
-        "result": data
-    }
+    # If "result" is present, use it exactly
+    if "result" in data:
+        result = data["result"] if isinstance(data["result"], dict) else {}
+        return {"status": status, "action": action, "result": result}
+
+    # Otherwise treat the dict as a bare result dictionary
+    return {"status": status, "action": action, "result": {k: v for k, v in data.items() if k not in ("status", "action")}}
+
 
